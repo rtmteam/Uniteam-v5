@@ -183,7 +183,7 @@ export interface SecurityCheckResult {
 }
 
 export const checkSecurityStatus = async (
-  position?: { coords: { latitude: number; longitude: number; accuracy: number; [key: string]: any } }
+  position?: { coords: { latitude: number; longitude: number; accuracy: number; speed?: number; [key: string]: any } }
 ): Promise<SecurityCheckResult> => {
   // 1. Native Android Checks via Capacitor Security Plugin
   if (Capacitor.isNativePlatform()) {
@@ -221,7 +221,7 @@ export const checkSecurityStatus = async (
 
   // 2. Location Accuracy & Mock Flag Validation (Web + Native)
   if (position && position.coords) {
-    const { latitude, longitude, accuracy } = position.coords;
+    const { latitude, longitude, accuracy, speed } = position.coords;
     const rawCoords = position.coords as any;
 
     if (rawCoords.isMock === true || rawCoords.mocked === true || rawCoords.isFromMockProvider === true) {
@@ -250,6 +250,26 @@ export const checkSecurityStatus = async (
       return {
         isAllowed: false,
         reason: 'إحداثيات الموقع الجغرافي غير صحيحة (0,0).'
+      };
+    }
+
+    // Additional anti-spoofing: suspiciously perfect accuracy
+    if (accuracy === 1 || accuracy === 3 || accuracy === 5 || accuracy === 10) {
+      if (speed === 0 || speed === undefined) {
+        return {
+          isAllowed: false,
+          reason: 'تم كشف استخدام Fake GPS (دقة موقع غير طبيعية). يرجى استخدام الموقع الحقيقي.'
+        };
+      }
+    }
+
+    // Check for unrealistic perfect decimal coordinates (spoofing indicator)
+    const latStr = latitude.toString();
+    const lngStr = longitude.toString();
+    if (latStr.length > 8 && latStr.endsWith('0000') && lngStr.endsWith('0000')) {
+      return {
+        isAllowed: false,
+        reason: 'تم كشف استخدام موقع جغرافي وهمي (إحداثيات غير طبيعية).'
       };
     }
   }
