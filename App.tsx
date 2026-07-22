@@ -6,12 +6,12 @@ import AdminDashboard from './components/AdminDashboard';
 import UserDashboard from './components/UserDashboard';
 import ReportsView from './components/ReportsView';
 import { ShieldCheck, User as UserIcon, Cloud, CloudOff, RefreshCw, FileSpreadsheet, Home, Download, Share, PlusSquare, X, Wifi } from 'lucide-react';
-import { syncTimeWithServer, initDeviceFingerprint } from './utils';
+import { syncTimeWithServer, initDeviceFingerprint, checkSecurityStatus, SecurityCheckResult } from './utils';
 
 // ==========================================
 // المصدر الرئيسي الوحيد لكلمة مرور المسؤول (Admin Password)
 // يمكنك تغييرها هنا مباشرة وسيتم تحديثها تلقائياً في كل التطبيق
-const ADMIN_PASSWORD_SSOT = 'B522129';
+const ADMIN_PASSWORD_SSOT = 'Ba522129';
 // ==========================================
 
 const App: React.FC = () => {
@@ -32,6 +32,8 @@ const App: React.FC = () => {
   const [isIos, setIsIos] = useState(false);
   const [isInStandaloneMode, setIsInStandaloneMode] = useState(false);
   const [showIosInstructions, setShowIosInstructions] = useState(false);
+
+  const [isDeviceBlocked, setIsDeviceBlocked] = useState<SecurityCheckResult | null>(null);
 
   const [config, setConfig] = useState<AppConfig>(() => {
     const saved = localStorage.getItem('attendance_config');
@@ -169,6 +171,14 @@ const App: React.FC = () => {
     syncTimeWithServer().catch(e => console.warn('On-load time sync failed', e));
     // تهيئة معرف الجهاز الثابت (Hardware UUID / IndexedDB)
     initDeviceFingerprint().catch(e => console.warn('Device fingerprint init failed', e));
+
+    // فحص أمني عند تشغيل التطبيق: منع الاستخدام إذا كان Developer Mode أو Fake GPS مفعّل
+    checkSecurityStatus().then(secRes => {
+      if (!secRes.isAllowed) {
+        setIsDeviceBlocked(secRes);
+        logAction('حظر التطبيق', `تم حظر التطبيق: ${secRes.reason}`);
+      }
+    }).catch(e => console.warn('App startup security check failed', e));
 
     const savedUser = localStorage.getItem('attendance_current_user');
     const savedBranches = localStorage.getItem('attendance_branches');
@@ -322,6 +332,22 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col relative z-10">
+      {isDeviceBlocked && (
+        <div className="fixed inset-0 z-[999] bg-red-600 flex items-center justify-center p-6">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl">
+            <div className="bg-red-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <ShieldCheck size={40} className="text-red-600" />
+            </div>
+            <h2 className="text-2xl font-black text-gray-900 mb-3">تم حظر التطبيق</h2>
+            <p className="text-gray-600 font-bold text-sm leading-relaxed mb-6">
+              {isDeviceBlocked.reason}
+            </p>
+            <p className="text-xs text-gray-400 font-bold">
+              برجاء إيقاف وضع المطورين وتطبيقات Fake GPS ثم إعادة فتح التطبيق
+            </p>
+          </div>
+        </div>
+      )}
       <header className="bg-white/90 backdrop-blur-md border-b border-gray-200 sticky top-0 z-50 h-16">
         <div className="max-w-5xl mx-auto px-4 h-full flex items-center justify-between">
           <div className="flex items-center gap-3">
