@@ -1,5 +1,7 @@
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Device } from '@capacitor/device';
+
+const SecurityCheck = registerPlugin<any>('SecurityCheck');
 
 /**
  * Calculates the distance between two points in meters using Haversine formula
@@ -188,30 +190,27 @@ export const checkSecurityStatus = async (
   // 1. Native Android Checks via Capacitor Security Plugin
   if (Capacitor.isNativePlatform()) {
     try {
-      const { SecurityCheck } = Capacitor as any;
-      if (SecurityCheck && typeof SecurityCheck.checkSecurity === 'function') {
-        const res = await SecurityCheck.checkSecurity();
-        if (res) {
-          if (res.isDeveloperMode) {
-            return {
-              isAllowed: false,
-              isDeveloperMode: true,
-              reason: 'عذراً، وضع المطورين (Developer Options) مفعّل على الهاتف. يرجى إيقافه لتسجيل الحضور والانصراف.'
-            };
-          }
-          if (res.isMockLocation) {
-            return {
-              isAllowed: false,
-              isMockLocation: true,
-              reason: 'تم كشف استخدام تطبيق لتزييف الموقع الجغرافي (Mock Location/Fake GPS). يرجى إيقاف التطبيق والمحاولة مجدداً.'
-            };
-          }
-          if (res.isEmulator) {
-            return {
-              isAllowed: false,
-              reason: 'عذراً، لا يمكن استخدام التطبيق من أجهزة المحاكاة (Emulators).'
-            };
-          }
+      const res = await SecurityCheck.checkSecurity();
+      if (res) {
+        if (res.isDeveloperMode) {
+          return {
+            isAllowed: false,
+            isDeveloperMode: true,
+            reason: 'عذراً، وضع المطورين (Developer Options) مفعّل على الهاتف. يرجى إيقافه لتسجيل الحضور والانصراف.'
+          };
+        }
+        if (res.isMockLocation) {
+          return {
+            isAllowed: false,
+            isMockLocation: true,
+            reason: 'تم كشف استخدام تطبيق لتزييف الموقع الجغرافي (Mock Location/Fake GPS). يرجى إيقاف التطبيق والمحاولة مجدداً.'
+          };
+        }
+        if (res.isEmulator) {
+          return {
+            isAllowed: false,
+            reason: 'عذراً، لا يمكن استخدام التطبيق من أجهزة المحاكاة (Emulators).'
+          };
         }
       }
     } catch (e) {
