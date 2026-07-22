@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Uniteam</string>
+    <string name="title_activity_main">Uniteam</string>
+    <string name="package_name">com.uniteam.attendance</string>
+    <string name="custom_url_scheme">com.uniteam.attendance</string>
+</resources>
