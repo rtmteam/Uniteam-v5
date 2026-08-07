@@ -125,12 +125,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         payload.visitPlans = visitPlans;
       }
 
-      // text/plain is required in no-cors mode; "application/json" is not a
-      // CORS-safelisted Content-Type and the browser drops the header.
       await fetch(config.syncUrl, {
         method: 'POST',
         mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       logAction('حفظ في السحابة', `تحديث بيانات ${dataType || 'النظام'} في جوجل شيت`);
@@ -254,13 +252,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
              }
              existingNids.add(nid);
 
+             const rawBranch = (item["الفرع الافتراضي"] || "").toString().trim();
              const newUser: User = {
               id: Math.random().toString(36).substr(2, 9),
               fullName: item["الاسم بالكامل"] || "موظف جديد",
               nationalId: nid,
               password: (item["كلمة المرور"] || "123456").toString(),
               jobTitle: item["الوظيفة"] || "موظف",
-              defaultBranchId: item["الفرع الافتراضي"] || "",
+              defaultBranchId: rawBranch,
+              defaultBranch: rawBranch,
               role: 'employee',
               deviceId: "",
               deviceIds: [],
@@ -412,6 +412,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </h2>
           <p className="text-slate-500 text-[10px] font-black uppercase">لوحة إدارة السحابة</p>
         </div>
+        <div className="flex flex-wrap gap-2">
+           <button onClick={() => { onRefresh(); logAction('تحديث البيانات', 'مزامنة البيانات مع السحابة'); }} disabled={isSyncing} className="flex items-center gap-2 px-5 py-3.5 rounded-2xl font-black bg-slate-900 text-blue-400 border border-blue-900/30 text-xs hover:bg-slate-800 transition-all">
+             <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} /> تحديث البيانات
+           </button>
+        </div>
       </div>
 
       <nav className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
@@ -501,7 +506,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             {branches.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
                           </select>
                         ) : (
-                          <span className="text-xs text-slate-300 font-bold">{user.defaultBranchId || 'غير محدد'}</span>
+                          <span className="text-xs text-slate-300 font-bold">{user.defaultBranchId || user.defaultBranch || user.assignedBranch || user.branch || 'غير محدد'}</span>
                         )}
                      </td>
                      <td className="py-4 px-2">

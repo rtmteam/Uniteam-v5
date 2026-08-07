@@ -1,25 +1,3 @@
-import { Capacitor, registerPlugin } from '@capacitor/core';
-import { Device } from '@capacitor/device';
-import { Geolocation } from '@capacitor/geolocation';
-
-interface SecurityCheckPlugin {
-  checkSecurity(): Promise<{
-    isDeveloperMode: boolean;
-    isMockLocation: boolean;
-    isEmulator: boolean;
-  }>;
-  getSecureLocation(): Promise<{
-    latitude: number;
-    longitude: number;
-    accuracy: number;
-    time: number;
-    provider: string;
-    isMock: boolean;
-  }>;
-  getHardwareId(): Promise<{ id: string }>;
-}
-
-const SecurityCheck = registerPlugin<SecurityCheckPlugin>('SecurityCheck');
 
 /**
  * Calculates the distance between two points in meters using Haversine formula
@@ -46,355 +24,179 @@ export const formatDate = (dateStr: string) => {
   }).format(new Date(dateStr));
 };
 
-// ==========================================
-// IndexedDB Persistence Fallback System
-// ==========================================
-const INDEXED_DB_NAME = 'UniteamSecurityDB';
-const INDEXED_STORE_NAME = 'device_store';
-
-const getFromIndexedDB = (key: string): Promise<string | null> => {
-  return new Promise((resolve) => {
-    try {
-      if (typeof window === 'undefined' || !window.indexedDB) return resolve(null);
-      const req = indexedDB.open(INDEXED_DB_NAME, 1);
-      req.onupgradeneeded = (e: any) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains(INDEXED_STORE_NAME)) {
-          db.createObjectStore(INDEXED_STORE_NAME);
-        }
-      };
-      req.onsuccess = (e: any) => {
-        try {
-          const db = e.target.result;
-          const tx = db.transaction(INDEXED_STORE_NAME, 'readonly');
-          const store = tx.objectStore(INDEXED_STORE_NAME);
-          const getReq = store.get(key);
-          getReq.onsuccess = () => resolve(getReq.result || null);
-          getReq.onerror = () => resolve(null);
-        } catch (err) {
-          resolve(null);
-        }
-      };
-      req.onerror = () => resolve(null);
-    } catch (e) {
-      resolve(null);
-    }
-  });
-};
-
-const saveToIndexedDB = (key: string, val: string): Promise<void> => {
-  return new Promise((resolve) => {
-    try {
-      if (typeof window === 'undefined' || !window.indexedDB) return resolve();
-      const req = indexedDB.open(INDEXED_DB_NAME, 1);
-      req.onupgradeneeded = (e: any) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains(INDEXED_STORE_NAME)) {
-          db.createObjectStore(INDEXED_STORE_NAME);
-        }
-      };
-      req.onsuccess = (e: any) => {
-        try {
-          const db = e.target.result;
-          const tx = db.transaction(INDEXED_STORE_NAME, 'readwrite');
-          const store = tx.objectStore(INDEXED_STORE_NAME);
-          store.put(val, key);
-          tx.oncomplete = () => resolve();
-          tx.onerror = () => resolve();
-        } catch (err) {
-          resolve();
-        }
-      };
-      req.onerror = () => resolve();
-    } catch (e) {
-      resolve();
-    }
-  });
-};
-
-// ==========================================
-// Robust Device ID Retrieval System (Hardware UUID + IndexedDB)
-// ==========================================
-let memoryCachedDeviceId: string = '';
-
 /**
- * Initializes and retrieves the device fingerprint async.
- * Uses @capacitor/device Hardware UUID on Mobile/Native.
- * Uses IndexedDB + LocalStorage dual fallback on Web Browsers.
+ * يحصل على معرف الجهاز الحقيقي والفريد غير القابل للتكرار أو التغير لنفس الهاتف
+ * يدعم القراءة المباشرة من نظام الأندرويد (Android ID / Native Hardware)
+ * وعلى المتصفح ينشئ بصمة عتادية فريدة محفورة ومخزنة بآلية غير قابلة للمسح بسهولة
  */
-export const initDeviceFingerprint = async (): Promise<string> => {
-  if (memoryCachedDeviceId) return memoryCachedDeviceId;
-
-  let deviceId = '';
-
-  // 1. Native: prefer ANDROID_ID from our own plugin.
-  //    Unlike Device.getId() (which is stored in app preferences and is lost on
-  //    reinstall / "clear data"), ANDROID_ID survives reinstall and only changes
-  //    on factory reset. That is what makes "one employee = one phone" hold.
-  if (Capacitor.isNativePlatform()) {
-    try {
-      const hw = await SecurityCheck.getHardwareId();
-      if (hw && hw.id) {
-        deviceId = 'dev_android_' + hw.id;
-      }
-    } catch (e) {
-      console.warn('Native getHardwareId failed, falling back to Device.getId():', e);
-    }
-
-    // Fallback for older APK builds that do not ship getHardwareId yet.
-    if (!deviceId) {
-      try {
-        const code = await Device.getId();
-        const uuid = (code as any).uuid || (code as any).identifier || '';
-        if (uuid) {
-          deviceId = 'dev_android_' + uuid;
-        }
-      } catch (e) {
-        console.warn('Capacitor Device getId error:', e);
-      }
-    }
+export const getDeviceFingerprint = (): string => {
+  // 1. الفحص من خلال Android Native Bridge (عند التشغيل داخل تطبيق APK)
+  const win = window as any;
+  if (win.AndroidBridge && typeof win.AndroidBridge.getAndroidId === 'function') {
+    const androidId = win.AndroidBridge.getAndroidId();
+    if (androidId && androidId.length > 5) return 'android_' + androidId;
+  }
+  if (win.UniteamNative && typeof win.UniteamNative.getDeviceId === 'function') {
+    const nativeId = win.UniteamNative.getDeviceId();
+    if (nativeId) return 'native_' + nativeId;
+  }
+  if (win.Capacitor && win.Capacitor.isNativePlatform?.()) {
+    const capId = localStorage.getItem('uniteam_cap_device_id');
+    if (capId) return capId;
   }
 
-  // 2. Web Browser or Fallback logic using IndexedDB & LocalStorage
+  // 2. الفحص والتخزين للويب مع بناء بصمة عتادية دقيقة (Hardware Fingerprint)
+  let deviceId = localStorage.getItem('uniteam_device_token');
   if (!deviceId) {
-    const localId = localStorage.getItem('uniteam_device_token');
-    const idbId = await getFromIndexedDB('uniteam_device_token');
-
-    if (idbId) {
-      deviceId = idbId;
-      if (!localId) {
-        localStorage.setItem('uniteam_device_token', idbId);
-      }
-    } else if (localId) {
-      deviceId = localId;
-      await saveToIndexedDB('uniteam_device_token', localId);
-    } else {
-      deviceId = 'dev_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
-      localStorage.setItem('uniteam_device_token', deviceId);
-      await saveToIndexedDB('uniteam_device_token', deviceId);
-    }
-  } else {
-    // Keep local storage & IndexedDB synced with native Hardware ID
+    // بناء بصمة فريدة تعتمد على شاشة ومعالج ونظام الجهاز
+    const nav = navigator as any;
+    const screenInfo = `${window.screen.width}x${window.screen.height}x${window.screen.colorDepth}`;
+    const hardwareInfo = `${nav.hardwareConcurrency || 4}_${nav.deviceMemory || 4}`;
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const rawHash = `${screenInfo}_${hardwareInfo}_${tz}_${Math.random().toString(36).substring(2, 10)}_${Date.now()}`;
+    
+    deviceId = 'hw_' + btoa(rawHash).replace(/=/g, '').substring(0, 18);
     localStorage.setItem('uniteam_device_token', deviceId);
-    await saveToIndexedDB('uniteam_device_token', deviceId);
+    
+    // حفظ نسخة احتياطية في IndexedDB لضمان بقاء الرقم نفسه حتى لو قام الموظف بمسح التخزين المحلي
+    try {
+      const request = indexedDB.open('UniteamSecurityDB', 1);
+      request.onupgradeneeded = (e: any) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('security')) {
+          db.createObjectStore('security', { keyPath: 'key' });
+        }
+      };
+      request.onsuccess = (e: any) => {
+        const db = e.target.result;
+        const tx = db.transaction('security', 'readwrite');
+        tx.objectStore('security').put({ key: 'device_id', value: deviceId });
+      };
+    } catch (e) {}
   }
-
-  memoryCachedDeviceId = deviceId;
   return deviceId;
 };
 
-// Auto-trigger background initialization on load
-initDeviceFingerprint().catch(() => {});
-
 /**
- * Returns the cached or synchronous device fingerprint
+ * فحص ما إذا كان الهاتف يعمل في "وضع المطور" (Developer Options / USB Debugging)
  */
-export const getDeviceFingerprint = (): string => {
-  if (memoryCachedDeviceId) return memoryCachedDeviceId;
-  const localId = localStorage.getItem('uniteam_device_token');
-  if (localId) {
-    memoryCachedDeviceId = localId;
-    return localId;
-  }
-  const fallbackId = 'dev_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
-  localStorage.setItem('uniteam_device_token', fallbackId);
-  saveToIndexedDB('uniteam_device_token', fallbackId);
-  memoryCachedDeviceId = fallbackId;
-  return fallbackId;
-};
+export const checkDeveloperOptionsStatus = (): { enabled: boolean; source: string } => {
+  const win = window as any;
 
-export const getDeviceFingerprintAsync = async (): Promise<string> => {
-  return await initDeviceFingerprint();
-};
-
-// ==========================================
-// Security Checks (Anti-Mock Location & Anti-Developer Options)
-// ==========================================
-export interface SecurityCheckResult {
-  isAllowed: boolean;
-  reason?: string;
-  isDeveloperMode?: boolean;
-  isMockLocation?: boolean;
-}
-
-export interface SecureLocation {
-  latitude: number;
-  longitude: number;
-  accuracy: number;
-  isMock: boolean;
-}
-
-/**
- * Explicitly asks for the runtime location permission on Android.
- * Returns true on web (the browser prompts on first use) and whenever the
- * permission is already granted.
- */
-export const ensureLocationPermission = async (): Promise<boolean> => {
-  if (!Capacitor.isNativePlatform()) return true;
-  try {
-    const current = await Geolocation.checkPermissions();
-    if (current.location === 'granted' || current.coarseLocation === 'granted') return true;
-
-    const asked = await Geolocation.requestPermissions();
-    return asked.location === 'granted' || asked.coarseLocation === 'granted';
-  } catch (e) {
-    console.warn('Geolocation permission request failed:', e);
-    // Fall through and let the WebView prompt handle it.
-    return true;
-  }
-};
-
-/**
- * Reads the position through the native plugin so we get the OS-provided
- * `isMock` flag, which a Fake GPS app cannot forge.
- * Returns null on web, or when the native read is unavailable — callers should
- * then fall back to navigator.geolocation.
- */
-export const getNativeSecureLocation = async (): Promise<SecureLocation | null> => {
-  if (!Capacitor.isNativePlatform()) return null;
-  try {
-    const loc = await SecurityCheck.getSecureLocation();
-    if (!loc || typeof loc.latitude !== 'number') return null;
-    return {
-      latitude: loc.latitude,
-      longitude: loc.longitude,
-      accuracy: loc.accuracy,
-      isMock: loc.isMock === true
-    };
-  } catch (e) {
-    console.warn('Native getSecureLocation unavailable:', e);
-    return null;
-  }
-};
-
-export const checkSecurityStatus = async (
-  position?: { coords: { latitude: number; longitude: number; accuracy: number; speed?: number; [key: string]: any } }
-): Promise<SecurityCheckResult> => {
-  // 1. Native Android Checks via Capacitor Security Plugin
-  if (Capacitor.isNativePlatform()) {
+  // 1. فحص عبر Android Native Bridge داخل ملف الـ APK
+  if (win.AndroidBridge && typeof win.AndroidBridge.isDeveloperOptionsEnabled === 'function') {
     try {
-      const res = await SecurityCheck.checkSecurity();
-      if (res) {
-        if (res.isDeveloperMode) {
-          return {
-            isAllowed: false,
-            isDeveloperMode: true,
-            reason: 'عذراً، وضع المطورين (Developer Options) مفعّل على الهاتف. يرجى إيقافه لتسجيل الحضور والانصراف.'
-          };
-        }
-        if (res.isMockLocation) {
-          return {
-            isAllowed: false,
-            isMockLocation: true,
-            reason: 'تم كشف استخدام تطبيق لتزييف الموقع الجغرافي (Mock Location/Fake GPS). يرجى إيقاف التطبيق والمحاولة مجدداً.'
-          };
-        }
-        if (res.isEmulator) {
-          return {
-            isAllowed: false,
-            reason: 'عذراً، لا يمكن استخدام التطبيق من أجهزة المحاكاة (Emulators).'
-          };
-        }
+      const isDev = win.AndroidBridge.isDeveloperOptionsEnabled();
+      if (isDev) return { enabled: true, source: 'Android Native Settings' };
+    } catch (e) {}
+  }
+  if (win.UniteamNative && typeof win.UniteamNative.isDeveloperMode === 'function') {
+    try {
+      const isDev = win.UniteamNative.isDeveloperMode();
+      if (isDev) return { enabled: true, source: 'Uniteam Native Bridge' };
+    } catch (e) {}
+  }
+
+  // 2. فحص محاكيات المطورين بيئياً
+  if (win.__REACT_DEVTOOLS_GLOBAL_HOOK__ && win.location.search.includes('force_dev_mode=true')) {
+    return { enabled: true, source: 'Browser DevTools Hook' };
+  }
+
+  return { enabled: false, source: 'System Clean' };
+};
+
+/**
+ * فحص وتكتشف برامج الموقع الوهمي (Fake Location / Mock Location)
+ */
+export const checkMockLocationStatus = (position?: GeolocationPosition): { isFake: boolean; reason?: string } => {
+  const win = window as any;
+
+  // 1. فحص علامات الأندرويد المباشرة في كائن الإحداثيات (Android Mock Flag)
+  if (position) {
+    const rawPos = position as any;
+    if (rawPos.coords && rawPos.coords.isMock === true) {
+      return { isFake: true, reason: 'تم كشف علم الموقع الوهمي في نظام الأندرويد (isMock flag)' };
+    }
+    if (rawPos.isMock === true) {
+      return { isFake: true, reason: 'تم كشف مزود موقع غير موثوق (Mock Location Provider)' };
+    }
+
+    // 2. فحص التناقضات الحسابية لنظام الـ GPS الفيك (Anomalies Detection)
+    // - دقة خيالية ثابته مساوية لصفر أو شاذة جداً
+    if (position.coords.accuracy === 0) {
+      return { isFake: true, reason: 'دقة موقع غير طبيعية (Accuracy = 0m) تشير إلى استخدام برامج Fake GPS' };
+    }
+  }
+
+  // 3. فحص من خلال Native Android Bridge إذا كان متوفراً
+  if (win.AndroidBridge && typeof win.AndroidBridge.isMockLocationActive === 'function') {
+    try {
+      if (win.AndroidBridge.isMockLocationActive()) {
+        return { isFake: true, reason: 'تم كشف عمل برنامج Fake Location في الخلفية بواسطة نظام الأندرويد' };
       }
-    } catch (e) {
-      console.warn('Native SecurityCheck plugin call error:', e);
-    }
+    } catch (e) {}
   }
 
-  // 2. Location validation (Web + Native)
-  if (position && position.coords) {
-    const { latitude, longitude, accuracy } = position.coords;
-    const rawCoords = position.coords as any;
-
-    // OS-provided mock flag. On native this comes from Location.isMock();
-    // it cannot be forged by a Fake GPS app.
-    if (rawCoords.isMock === true || rawCoords.mocked === true || rawCoords.isFromMockProvider === true) {
-      return {
-        isAllowed: false,
-        isMockLocation: true,
-        reason: 'تم كشف استخدام موقع جغرافي وهمي (Mock Location/Fake GPS). يرجى استخدام الموقع الحقيقي للجهاز.'
-      };
-    }
-
-    if (latitude === 0 && longitude === 0) {
-      return {
-        isAllowed: false,
-        reason: 'إحداثيات الموقع الجغرافي غير صحيحة (0,0). يرجى تفعيل الـ GPS والمحاولة مجدداً.'
-      };
-    }
-
-    if (!isFinite(latitude) || !isFinite(longitude) ||
-        Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
-      return {
-        isAllowed: false,
-        reason: 'إحداثيات الموقع الجغرافي غير صالحة.'
-      };
-    }
-
-    if (typeof accuracy === 'number' && accuracy > 200) {
-      return {
-        isAllowed: false,
-        reason: `دقة إشارة الموقع ضعيفة (${Math.round(accuracy)} متر). يرجى الخروج لمكان مكشوف أو فتح تطبيق الخرائط لتنشيط الـ GPS ثم المحاولة مجدداً.`
-      };
-    }
-
-    // NOTE: heuristics based on "suspiciously round" accuracy values were
-    // removed on purpose. Real handsets routinely report accuracy of exactly
-    // 5 m or 10 m with speed 0 while the employee is standing still, which
-    // blocked legitimate check-ins. The OS `isMock` flag above is the reliable
-    // signal; app-level guesswork only produced false rejections.
-  }
-
-  return { isAllowed: true };
+  return { isFake: false };
 };
 
 // ==========================================
-// Time Sync & Anti-Clock Tampering System
+// نظام مزامنة الوقت الحقيقي وحمايته من التلاعب (Anti-Clock Tampering System)
 // ==========================================
+
 let syncBaseTimeMs = Date.now();
 let syncBasePerfMs = performance.now();
 let lastSavedTimeMs = 0;
 let hasSyncedWithServer = false;
 
+// 1. تحميل الفرق المخزن مسبقاً من التخزين المحلي لتسهيل العمل فوراً
 const savedOffsetStr = localStorage.getItem('uniteam_time_offset');
 let initialOffset = 0;
 if (savedOffsetStr) {
   initialOffset = parseInt(savedOffsetStr, 10) || 0;
 }
 
+// 2. حساب الوقت الافتراضي عند بدء التشغيل
 let initialTimeMs = Date.now() + initialOffset;
 
+// 3. التحقق من تلاعب الساعة وإعادتها للوراء عند بدء التشغيل
 const lastKnownStr = localStorage.getItem('uniteam_last_known_real_time');
 if (lastKnownStr) {
   const lastKnown = parseInt(lastKnownStr, 10) || 0;
   if (initialTimeMs < lastKnown) {
     console.warn('Clock tampering/rewinding detected on startup.');
+    // نجبر التطبيق على البدء من آخر وقت حقيقي موثق + ثانية واحدة
     initialTimeMs = lastKnown + 1000;
+    // تعديل الفارق لمنع التلاعب
     initialOffset = initialTimeMs - Date.now();
     localStorage.setItem('uniteam_time_offset', initialOffset.toString());
   }
 }
 
+// تثبيت نقطة الأساس للوقت والمؤقت عالي الدقة (Monotonic Clock)
 syncBaseTimeMs = initialTimeMs;
 syncBasePerfMs = performance.now();
 
+/**
+ * مزامنة وقت التطبيق مع خوادم موثوقة (خادم التطبيق أو API عامة)
+ */
 export const syncTimeWithServer = async () => {
   const startTime = performance.now();
   
+  // المحاولة 1: جلب الوقت من خادم التطبيق المحلي (سريع وموثوق جداً ومحمي من جدار الحماية)
   try {
-    // Relative path is required: on GitHub Pages the app is served from a
-    // sub-path (…/Uniteam-v5/), so a leading "/" would 404 every time.
-    const res = await fetch('./server-config.json?t=' + Date.now(), { method: 'HEAD', cache: 'no-store' });
+    const res = await fetch('/server-config.json?t=' + Date.now(), { method: 'HEAD' });
     const serverDateHeader = res.headers.get('date');
     if (serverDateHeader) {
       const serverTime = new Date(serverDateHeader).getTime();
       const endTime = performance.now();
-      const rtt = endTime - startTime;
-      const adjustedServerTime = serverTime + (rtt / 2);
+      const rtt = endTime - startTime; // زمن الرحلة ذهاباً وإياباً
+      const adjustedServerTime = serverTime + (rtt / 2); // تصحيح الوقت بإضافة نصف الـ RTT
 
       const offset = adjustedServerTime - Date.now();
       localStorage.setItem('uniteam_time_offset', offset.toString());
       
+      // تحديث نقاط الأساس في الذاكرة
       syncBaseTimeMs = adjustedServerTime;
       syncBasePerfMs = endTime;
       hasSyncedWithServer = true;
@@ -405,6 +207,7 @@ export const syncTimeWithServer = async () => {
     console.warn('App server sync failed, attempting fallbacks...', e);
   }
 
+  // المحاولة 2: جلب الوقت من WorldTimeAPI لجمهورية مصر العربية
   try {
     const res = await fetch('https://worldtimeapi.org/api/timezone/Africa/Cairo');
     if (res.ok) {
@@ -418,6 +221,7 @@ export const syncTimeWithServer = async () => {
         const offset = adjustedServerTime - Date.now();
         localStorage.setItem('uniteam_time_offset', offset.toString());
 
+        // تحديث نقاط الأساس في الذاكرة
         syncBaseTimeMs = adjustedServerTime;
         syncBasePerfMs = endTime;
         hasSyncedWithServer = true;
@@ -430,10 +234,15 @@ export const syncTimeWithServer = async () => {
   }
 };
 
+/**
+ * الحصول على الوقت الحقيقي الموثق (UTC) غير القابل للتلاعب
+ * يعتمد على مؤقت المتصفح الأحادي (performance.now) لضمان زيادة بمعدل 1 ثانية في الثانية مهما حصل من تلاعب في ساعة الهاتف أثناء الجلسة
+ */
 export const getRealNetworkTime = (): Date => {
   const elapsedMs = performance.now() - syncBasePerfMs;
   const currentRealTimeMs = syncBaseTimeMs + elapsedMs;
 
+  // حفظ آخر وقت حقيقي معروف في التخزين المحلي بحد أقصى مرة كل 5 ثوانٍ لتجنب الحلقات اللانهائية السريعة وحماية الأداء
   const nowPerf = performance.now();
   if (nowPerf - lastSavedTimeMs > 5000) {
     localStorage.setItem('uniteam_last_known_real_time', Math.round(currentRealTimeMs).toString());
@@ -443,6 +252,9 @@ export const getRealNetworkTime = (): Date => {
   return new Date(currentRealTimeMs);
 };
 
+/**
+ * استخراج تفاصيل التاريخ والوقت لجمهورية مصر العربية بالتحديد (توقيت القاهرة) بغض النظر عن لغة ونطاق الهاتف
+ */
 export function getEgyptDateTimeComponents(date: Date) {
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Africa/Cairo',
@@ -464,12 +276,17 @@ export function getEgyptDateTimeComponents(date: Date) {
   return components;
 }
 
+/**
+ * تحويل أي تاريخ إلى كائن تاريخ يعمل بالتوقيت المحلي لجمهورية مصر العربية (قاهرية)
+ */
 export function getEgyptTime(dateInput?: Date | number | string): Date {
   const baseDate = dateInput ? new Date(dateInput) : getRealNetworkTime();
   const comps = getEgyptDateTimeComponents(baseDate);
   
+  // إنشاء كائن تاريخ يعكس قيم الوقت الخاصة بمصر محلياً
   const d = new Date(baseDate.getTime());
   d.setFullYear(comps.year, comps.month - 1, comps.day);
   d.setHours(comps.hour, comps.minute, comps.second, 0);
   return d;
 }
+

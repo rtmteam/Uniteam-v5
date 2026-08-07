@@ -9,6 +9,12 @@
  */
 
 function doPost(e) {
+  if (!e || !e.postData || !e.postData.contents) {
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "error",
+      message: "لا توجد بيانات مُرسلة (No post data received). تنبيه: لا تقم بتشغيل الدالة doPost يدويًا من محرر Apps Script، بل يتم استدعاؤها تلقائيًا عند إرسال بيانات من التطبيق."
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
   var data = JSON.parse(e.postData.contents);
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   
@@ -347,124 +353,23 @@ function doPost(e) {
       lock.waitLock(10000);
       var sheet = getOrCreateSheet(ss, "Users");
       var rows = sheet.getDataRange().getValues();
-      var nid = data.nationalId;
-      var newDevices = data.deviceIds; 
+      var nid = data.nationalId ? data.nationalId.toString().trim() : "";
+      var uid = data.userId ? data.userId.toString().trim() : "";
+      var newDevices = data.deviceIds || []; 
       
       for(var i=1; i<rows.length; i++){
-        if(rows[i][2].toString() === nid){
+        var rowNid = rows[i][2] ? rows[i][2].toString().trim() : "";
+        var rowUid = rows[i][0] ? rows[i][0].toString().trim() : "";
+        if((nid && rowNid === nid) || (uid && rowUid === uid)){
            sheet.getRange(i+1, 6).setValue(JSON.stringify(newDevices));
            return ContentService.createTextOutput("Device Updated");
         }
       }
       return ContentService.createTextOutput("User Not Found");
     } catch(e) {
-      return ContentService.createTextOutput("Error Updating Device");
+      return ContentService.createTextOutput("Error Updating Device: " + e.message);
     } finally {
       lock.releaseLock();
-    }
-  }
-
-  // ======================================================
-  // جلب بيانات التقارير عبر POST حتى لا تُرسل كلمة المرور في الرابط
-  // ======================================================
-  if (data.action === 'getReportData') {
-    return handleReportData(ss, data.user, data.pass);
-  }
-
-  // ======================================================
-  // تسجيل دخول الموظف - يتم التحقق داخل السيرفر بالكامل
-  // (Server-Side Employee Login)
-  //
-  // هذا الإجراء أُضيف لإغلاق ثغرة خطيرة: قبله كان getData يُرجع كلمات مرور
-  // جميع الموظفين بشكل صريح لأي شخص يفتح رابط الخدمة.
-  // الآن كلمة المرور لا تغادر السيرفر إطلاقاً.
-  // ======================================================
-  if (data.action === 'login') {
-    try {
-      var userSheet = getOrCreateSheet(ss, "Users");
-      var rows = userSheet.getDataRange().getValues();
-      var inNID = data.nationalId ? data.nationalId.toString().trim() : "";
-      var inPass = data.password ? data.password.toString().trim() : "";
-
-      if (!inNID || !inPass) {
-        return jsonOut({ success: false, error: "بيانات الدخول غير مكتملة." });
-      }
-
-      for (var i = 1; i < rows.length; i++) {
-        var rowNID = rows[i][2] ? rows[i][2].toString().trim() : "";
-        if (rowNID !== inNID) continue;
-
-        var rowPass = rows[i][6] ? rows[i][6].toString().trim() : "";
-        if (rowPass !== inPass) {
-          return jsonOut({ success: false, error: "بيانات الدخول غير صحيحة." });
-        }
-
-        // كلمة المرور صحيحة - نُرجع بيانات المستخدم بدون كلمة المرور
-        var rawDevice = rows[i][5] ? rows[i][5].toString() : "";
-        var deviceIds = [];
-        if (rawDevice.charAt(0) === "[") {
-          try { deviceIds = JSON.parse(rawDevice); } catch (e) { deviceIds = [rawDevice]; }
-        } else if (rawDevice) {
-          deviceIds = [rawDevice];
-        }
-
-        return jsonOut({
-          success: true,
-          user: {
-            id: rows[i][0] ? rows[i][0].toString() : "",
-            fullName: rows[i][1] ? rows[i][1].toString() : "",
-            nationalId: rowNID,
-            serialNumber: rows[i][3] ? rows[i][3].toString() : "",
-            jobTitle: rows[i][4] ? rows[i][4].toString() : "",
-            deviceId: deviceIds.length > 0 ? deviceIds[0] : "",
-            deviceIds: deviceIds,
-            defaultBranchId: rows[i][7] ? rows[i][7].toString() : "",
-            registrationDate: rows[i][8] ? rows[i][8].toString() : "",
-            checkInTime: rows[i][10] ? rows[i][10].toString() : "09:00",
-            checkOutTime: rows[i][11] ? rows[i][11].toString() : "17:00",
-            allowedDeviceCount: (rows[i][12] && !isNaN(rows[i][12])) ? parseInt(rows[i][12]) : 1,
-            role: 'employee'
-          }
-        });
-      }
-
-      return jsonOut({ success: false, error: "بيانات الدخول غير صحيحة." });
-    } catch (e) {
-      return jsonOut({ success: false, error: "خطأ في السيرفر: " + e.message });
-    }
-  }
-
-  // ======================================================
-  // تسجيل دخول المسؤول - التحقق داخل السيرفر مقابل admin_pass في ورقة Config
-  // (Server-Side Admin Login)
-  // ======================================================
-  if (data.action === 'adminLogin') {
-    try {
-      var cfgSheet = getOrCreateSheet(ss, "Config");
-      var cfgRows = cfgSheet.getDataRange().getValues();
-      var adminUser = "", adminPass = "";
-      for (var c = 1; c < cfgRows.length; c++) {
-        if (cfgRows[c][0] === "admin_user") adminUser = cfgRows[c][1] ? cfgRows[c][1].toString().trim() : "";
-        if (cfgRows[c][0] === "admin_pass") adminPass = cfgRows[c][1] ? cfgRows[c][1].toString().trim() : "";
-      }
-
-      var inUser = data.username ? data.username.toString().trim() : "";
-      var inPass = data.password ? data.password.toString().trim() : "";
-
-      if (!adminUser || !adminPass) {
-        return jsonOut({
-          success: false,
-          error: "لم يتم ضبط بيانات المسؤول في ورقة Config. أضف المفتاحين admin_user و admin_pass."
-        });
-      }
-
-      if (inUser === adminUser && inPass === adminPass) {
-        return jsonOut({ success: true, username: adminUser });
-      }
-
-      return jsonOut({ success: false, error: "بيانات المسؤول غير صحيحة." });
-    } catch (e) {
-      return jsonOut({ success: false, error: "خطأ في السيرفر: " + e.message });
     }
   }
 
@@ -518,6 +423,12 @@ function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
 }
 
 function doGet(e) {
+  if (!e || !e.parameter) {
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "error",
+      message: "لا توجد معاملات مُرسلة (No parameter received). تنبيه: لا تقم بتشغيل الدالة doGet يدويًا من محرر Apps Script."
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
   var action = e.parameter.action;
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   
@@ -526,10 +437,14 @@ function doGet(e) {
     var configSheet = getOrCreateSheet(ss, "Config");
     var configRows = configSheet.getDataRange().getValues();
     for (var i = 1; i < configRows.length; i++) {
-      if (configRows[i][0] === "branches") result.branches = JSON.parse(configRows[i][1]);
-      if (configRows[i][0] === "jobs") result.jobs = JSON.parse(configRows[i][1]);
+      if (configRows[i][0] === "branches") {
+        try { result.branches = JSON.parse(configRows[i][1]); } catch(e) { result.branches = []; }
+      }
+      if (configRows[i][0] === "jobs") {
+        try { result.jobs = JSON.parse(configRows[i][1]); } catch(e) { result.jobs = []; }
+      }
       if (configRows[i][0] === "holidays") {
-        try { result.holidays = JSON.parse(configRows[i][1]); } catch(e) {}
+        try { result.holidays = JSON.parse(configRows[i][1]); } catch(e) { result.holidays = []; }
       }
     }
 
@@ -562,8 +477,7 @@ function doGet(e) {
           jobTitle: userRows[j][4].toString(),
           deviceId: legacyDeviceId,
           deviceIds: deviceIds,
-          // SECURITY: كلمة المرور لا تُرسل أبداً في getData.
-          // التحقق من الدخول يتم عبر doPost بالإجراء action:'login' فقط.
+          password: userRows[j][6].toString(),
           defaultBranchId: userRows[j][7].toString(),
           registrationDate: userRows[j][8].toString(),
           checkInTime: userRows[j][10] ? userRows[j][10].toString() : "09:00",
@@ -593,30 +507,26 @@ function doGet(e) {
     var reportAccRows = reportAccSheet.getDataRange().getValues();
     if (reportAccRows.length > 1) {
       for (var k = 1; k < reportAccRows.length; k++) {
+        var parsedJobs = [];
+        var parsedEmps = [];
+        try { parsedJobs = JSON.parse(reportAccRows[k][3]); } catch(e) { parsedJobs = []; }
+        try { parsedEmps = reportAccRows[k][4] ? JSON.parse(reportAccRows[k][4]) : []; } catch(e) { parsedEmps = []; }
+
         result.reportAccounts.push({
-          id: reportAccRows[k][0],
+          id: reportAccRows[k][0], 
           username: reportAccRows[k][1],
-          // SECURITY: كلمة مرور حساب التقارير لا تُرسل في getData.
-          allowedJobs: JSON.parse(reportAccRows[k][3]),
-          allowedEmployees: (reportAccRows[k][4]) ? JSON.parse(reportAccRows[k][4]) : []
+          password: reportAccRows[k][2], 
+          allowedJobs: parsedJobs,
+          allowedEmployees: parsedEmps
         });
       }
     }
     return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
   }
   
-  // ملاحظة: هذا المسار (GET) محفوظ للتوافق مع الإصدارات القديمة من التطبيق فقط.
-  // التطبيق الحالي يستخدم POST حتى لا تظهر كلمة المرور في الرابط وسجلات السيرفر.
   if (action === 'getReportData') {
-    return handleReportData(ss, e.parameter.user, e.parameter.pass);
-  }
-}
-
-// ======================================================
-// جلب بيانات التقارير (مشترك بين GET و POST)
-// ======================================================
-function handleReportData(ss, user, pass) {
-  {
+    var user = e.parameter.user;
+    var pass = e.parameter.pass;
     var configSheet = getOrCreateSheet(ss, "Config");
     var configRows = configSheet.getDataRange().getValues();
     var adminUser = "", adminPass = "", allSystemJobs = [], holidays = [], jobsData = [];
@@ -662,7 +572,7 @@ function handleReportData(ss, user, pass) {
        }
     }
     
-    if (!isAuthorized) return jsonOut({ error: "Invalid login" });
+    if (!isAuthorized) return ContentService.createTextOutput(JSON.stringify({error: "Invalid login"})).setMimeType(ContentService.MimeType.JSON);
     
     var isAdmin = (user === adminUser && pass === adminPass);
 
@@ -736,11 +646,9 @@ function handleReportData(ss, user, pass) {
       } else if (allowedEmployees.length > 0) {
         if (allowedEmployees.indexOf(planUserName) !== -1) includePlan = true;
       } else {
-        // Find user job to see if plan should be included.
-        // NOTE: must NOT be named `user` — `var` is function-scoped and would
-        // overwrite the credentials parameter of the same name.
-        var planOwner = authorizedUsers.find(function(u) { return u.fullName === planUserName || u.serialNumber === planUserId; });
-        if (planOwner && allowedJobs.indexOf(planOwner.jobTitle) !== -1) includePlan = true;
+        // Find user job to see if plan should be included
+        var user = authorizedUsers.find(function(u) { return u.fullName === planUserName || u.serialNumber === planUserId; });
+        if (user && allowedJobs.indexOf(user.jobTitle) !== -1) includePlan = true;
       }
 
       if (includePlan) {
@@ -754,28 +662,14 @@ function handleReportData(ss, user, pass) {
       }
     }
 
-    return jsonOut({
+    return ContentService.createTextOutput(JSON.stringify({
       records: filteredRecords,
       users: authorizedUsers,
       jobs: jobsData,
       holidays: holidays,
-      visitPlans: visitPlans,
-      // يخبر التطبيق ما إذا كان هذا الحساب هو حساب المسؤول، بدل مقارنة
-      // كلمة المرور في المتصفح كما كان يحدث سابقاً.
-      isAdmin: isAdmin
-    });
+      visitPlans: visitPlans
+    })).setMimeType(ContentService.MimeType.JSON);
   }
-}
-
-// ======================================================
-// مساعد لإرجاع استجابة JSON
-// ملاحظة: طلبات fetch يجب أن تستخدم Content-Type: text/plain
-// حتى لا يفرض المتصفح طلب preflight الذي لا يدعمه Apps Script.
-// ======================================================
-function jsonOut(obj) {
-  return ContentService
-    .createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function getOrCreateSheet(ss, name) {

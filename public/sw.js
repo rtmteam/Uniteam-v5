@@ -73,15 +73,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Always fetch server-config.json from network (never cache it)
-  if (event.request.url.includes('server-config.json')) {
-    event.respondWith(
-      fetch(event.request, { cache: 'no-store' })
-        .catch(() => caches.match(event.request))
-    );
-    return;
-  }
-
   // Default strategy for other resources: Cache First, then Network
   event.respondWith(
     caches.match(event.request)

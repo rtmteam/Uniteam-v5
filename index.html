@@ -11,6 +11,7 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./icon.png">
   <link rel="icon" type="image/png" href="./icon.png">
+  <script src="./android-bridge.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
   <style>
@@ -35,12 +36,19 @@
       margin: 0;
     }
   </style>
-<!--
-  NOTE: the old esm.sh importmap block was removed on purpose.
-  Vite bundles every dependency into dist/assets at build time, so the import map
-  was dead weight - and it pinned different versions (React 19.2.3) than
-  package.json (React 19.0.0), which risked loading two copies of React.
--->
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "vite": "https://esm.sh/vite@^7.3.0",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "xlsx": "https://esm.sh/xlsx@^0.18.5"
+  }
+}
+</script>
 </head>
 <body class="bg-gray-50 text-gray-900 unilever-watermark select-none">
   <div id="root"></div>

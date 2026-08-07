@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { User, AppConfig, Job, Branch } from '../types';
 import { UserPlus, LogIn, ShieldAlert, Briefcase, Loader2, Link as LinkIcon, Smartphone, AlertCircle, WifiOff, MapPin, Eye, EyeOff } from 'lucide-react';
-import { getDeviceFingerprintAsync } from '../utils';
+import { getDeviceFingerprint } from '../utils';
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -72,9 +72,7 @@ export default function Login({
       return;
     }
     
-    // Must await: on a fresh native install the hardware ID is resolved asynchronously,
-    // and the sync getter would otherwise hand back a throwaway random id.
-    const deviceId = await getDeviceFingerprintAsync();
+    const deviceId = getDeviceFingerprint();
 
     const existingById = allUsers.find(u => u.nationalId === nationalId);
     if (existingById) {
@@ -101,7 +99,7 @@ export default function Login({
     const branchNameForSheet = branchObj ? branchObj.name : defaultBranch;
 
     const newUser: User = {
-      id: Math.random().toString(36).substring(2, 11),
+      id: Math.random().toString(36).substr(2, 9),
       fullName,
       nationalId,
       password,
@@ -119,8 +117,8 @@ export default function Login({
         await fetch(adminConfig.googleSheetLink, {
           method: 'POST',
           mode: 'no-cors',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
             action: 'registerUser',
             ...newUser,
             timestamp: newUser.registrationDate
@@ -151,14 +149,8 @@ export default function Login({
     let currentUsersList = allUsers;
     const syncTargetUrl = adminConfig.syncUrl || adminConfig.googleSheetLink;
 
-    if (!syncTargetUrl) {
-      setError('لم يتم ربط التطبيق بالخادم بعد. يرجى المحاولة بعد قليل أو الضغط على "تحديث البيانات".');
-      setIsLoading(false);
-      return;
-    }
-
-    // 1. المزامنة مع شيت جوجل لجلب أحدث قائمة موظفين (بدون كلمات مرور)
-    if (onSync) {
+    // 1. المزامنة المباشرة مع شيت جوجل قبل التحقق من بيانات الدخول بالرقم القومي وكلمة المرور
+    if (onSync && syncTargetUrl) {
       try {
         const syncedData = await onSync(syncTargetUrl, true);
         if (syncedData && Array.isArray(syncedData.users)) {
@@ -169,125 +161,106 @@ export default function Login({
       }
     }
 
+    if (currentUsersList.length === 0 && syncTargetUrl) {
+      setError('تعذر جلب بيانات الموظفين من شيت جوجل، يرجى التأكد من الاتصال بالإنترنت ومحاولة الدخول مجدداً.');
+      logAction('فشل تسجيل دخول موظف', 'السبب: تعذر جلب بيانات الموظفين');
+      setIsLoading(false);
+      return;
+    }
+
     const trimmedNId = nationalId.trim();
     const trimmedPass = password.trim();
 
-    // 2. التحقق من كلمة المرور داخل السيرفر
-    //    كلمة المرور لا تُقارَن في المتصفح ولا تُحمَّل إليه إطلاقاً.
-    let user: User | undefined;
-    try {
-      const res = await fetch(syncTargetUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'login',
-          nationalId: trimmedNId,
-          password: trimmedPass
-        })
-      });
-      const result = await res.json();
-      if (result && result.success && result.user) {
-        user = result.user as User;
-      } else {
+    const user = currentUsersList.find(u => 
+      String(u.nationalId).trim() === trimmedNId && 
+      String(u.password).trim() === trimmedPass
+    );
+    
+    if (user) {
+      const currentDeviceId = getDeviceFingerprint();
+      
+      // Check if this device belongs to someone else
+      const otherDeviceOwner = currentUsersList.find(u => 
+        u.id !== user.id && 
+        String(u.nationalId).trim() !== trimmedNId &&
+        ((u.deviceId === currentDeviceId) || (u.deviceIds && u.deviceIds.includes(currentDeviceId)))
+      );
+      
+      if (otherDeviceOwner) {
+        setError(`عذراً، هذا الهاتف مسجل باسم موظف آخر (${otherDeviceOwner.fullName}).`);
+        logAction('فشل تسجيل دخول موظف', `السبب: الهاتف مسجل باسم موظف آخر (${otherDeviceOwner.fullName})`);
         setIsLoading(false);
-        logAction('فشل تسجيل دخول موظف', `الرقم القومي: ${trimmedNId}`);
-        setError(result?.error || 'بيانات الدخول غير صحيحة، تأكد من الرقم القومي وكلمة المرور.');
         return;
       }
-    } catch (err) {
-      setIsLoading(false);
-      logAction('فشل تسجيل دخول موظف', `السبب: تعذر الاتصال بالخادم - ${err instanceof Error ? err.message : String(err)}`);
-      setError('تعذر الاتصال بالخادم للتحقق من بيانات الدخول. تأكد من الاتصال بالإنترنت وحاول مجدداً.');
-      return;
-    }
 
-    // `user` is guaranteed here (every failure path above returns), but it is a
-    // `let`, so TypeScript will not keep the narrowing inside the callbacks below.
-    const authUser: User = user;
+      // Logic for Multi-Device Support
+      const userDevices = Array.isArray(user.deviceIds) ? user.deviceIds : (user.deviceId ? [user.deviceId] : []);
+      const maxDevices = user.allowedDeviceCount || 1;
 
-    // Wait for the real hardware ID before deciding anything about device binding.
-    const currentDeviceId = await getDeviceFingerprintAsync();
-
-    // Check if this device belongs to someone else
-    const otherDeviceOwner = currentUsersList.find(u =>
-      u.id !== authUser.id &&
-      String(u.nationalId).trim() !== trimmedNId &&
-      ((u.deviceId === currentDeviceId) || (u.deviceIds && u.deviceIds.includes(currentDeviceId)))
-    );
-
-    if (otherDeviceOwner) {
-      setError(`عذراً، هذا الهاتف مسجل باسم موظف آخر (${otherDeviceOwner.fullName}).`);
-      logAction('فشل تسجيل دخول موظف', `السبب: الهاتف مسجل باسم موظف آخر (${otherDeviceOwner.fullName})`);
-      setIsLoading(false);
-      return;
-    }
-
-    // Logic for Multi-Device Support
-    const userDevices = Array.isArray(authUser.deviceIds) ? authUser.deviceIds : (authUser.deviceId ? [authUser.deviceId] : []);
-    const maxDevices = authUser.allowedDeviceCount || 1;
-
-    if (userDevices.includes(currentDeviceId)) {
-      // Device is already linked -> Allow Login
-      setIsLoading(false);
-      logAction('تسجيل دخول موظف', `الموظف: ${authUser.fullName}, الرقم القومي: ${authUser.nationalId}`);
-      onLogin(authUser);
-      return;
-    }
-
-    // Device not linked, check if we can add it
-    if (userDevices.length >= maxDevices) {
-      setIsLoading(false);
-      logAction('فشل تسجيل دخول (تجاوز عدد الأجهزة)', `الموظف: ${authUser.fullName}, الجهاز: ${currentDeviceId}`);
-      setError(`عذراً، لقد تجاوزت الحد المسموح من الأجهزة (${userDevices.length}/${maxDevices}). يرجى التواصل مع المسؤول.`);
-      return;
-    }
-
-    // Add new device
-    const updatedDevices = [...userDevices, currentDeviceId];
-    const updatedUser: User = {
-      ...authUser,
-      deviceIds: updatedDevices,
-      deviceId: currentDeviceId
-    };
-
-    try {
-      // NOTE: Content-Type must be text/plain in no-cors mode — "application/json"
-      // is not a CORS-safelisted value and gets dropped by the browser.
-      // Apps Script reads the raw body via e.postData.contents either way.
-      await fetch(syncTargetUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'updateUserDevice',
-          nationalId: updatedUser.nationalId,
-          userId: updatedUser.id,
-          deviceIds: updatedDevices
-        })
-      });
-
-      // Re-sync from Google Sheets to confirm the device ID was saved
-      if (onSync) {
-        const refreshedData = await onSync(syncTargetUrl, true);
-        if (refreshedData && Array.isArray(refreshedData.users)) {
-          const refreshedUser = refreshedData.users.find((u: User) =>
-            String(u.nationalId).trim() === String(updatedUser.nationalId).trim()
-          );
-          if (refreshedUser) {
-            setIsLoading(false);
-            logAction('تسجيل دخول موظف (ربط جهاز جديد)', `الموظف: ${refreshedUser.fullName}, الجهاز: ${currentDeviceId}`);
-            onLogin(refreshedUser);
-            return;
+      if (userDevices.includes(currentDeviceId)) {
+        // Device is already linked -> Allow Login
+        setIsLoading(false);
+        logAction('تسجيل دخول موظف', `الموظف: ${user.fullName}, الرقم القومي: ${user.nationalId}`);
+        onLogin(user);
+      } else {
+        // Device not linked, check if we can add it
+        if (userDevices.length < maxDevices) {
+          // Add new device
+          const updatedDevices = [...userDevices, currentDeviceId];
+          const updatedUser = { 
+            ...user, 
+            deviceIds: updatedDevices,
+            deviceId: currentDeviceId
+          };
+          
+          if (syncTargetUrl) {
+            try {
+              await fetch(syncTargetUrl, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                  action: 'updateUserDevice',
+                  nationalId: updatedUser.nationalId,
+                  userId: updatedUser.id,
+                  deviceIds: updatedDevices
+                })
+              });
+              
+              // CRITICAL: Re-sync from Google Sheets to confirm device ID saved and update global state
+              if (onSync) {
+                const refreshedData = await onSync(syncTargetUrl, true);
+                if (refreshedData && Array.isArray(refreshedData.users)) {
+                  const refreshedUser = refreshedData.users.find((u: User) => 
+                    String(u.nationalId).trim() === String(updatedUser.nationalId).trim()
+                  );
+                  if (refreshedUser) {
+                    setIsLoading(false);
+                    logAction('تسجيل دخول موظف (ربط جهاز جديد)', `الموظف: ${refreshedUser.fullName}, الجهاز: ${currentDeviceId}`);
+                    onLogin(refreshedUser);
+                    return;
+                  }
+                }
+              }
+            } catch (err) {
+              console.error("Sync device update failed", err);
+            }
           }
+          setIsLoading(false);
+          logAction('تسجيل دخول موظف (ربط جهاز جديد)', `الموظف: ${updatedUser.fullName}, الجهاز: ${currentDeviceId}`);
+          onLogin(updatedUser);
+        } else {
+          // Limit reached
+          setIsLoading(false);
+          logAction('فشل تسجيل دخول (تجاوز عدد الأجهزة)', `الموظف: ${user.fullName}, الجهاز: ${currentDeviceId}`);
+          setError(`عذراً، لقد تجاوزت الحد المسموح من الأجهزة (${userDevices.length}/${maxDevices}). يرجى التواصل مع المسؤول.`);
         }
       }
-    } catch (err) {
-      console.error("Sync device update failed", err);
+    } else {
+      setIsLoading(false);
+      logAction('فشل تسجيل دخول موظف', `الرقم القومي: ${nationalId}`);
+      setError('بيانات الدخول غير صحيحة، تأكد من الرقم القومي وكلمة المرور المسجلة بالشيت.');
     }
-
-    setIsLoading(false);
-    logAction('تسجيل دخول موظف (ربط جهاز جديد)', `الموظف: ${updatedUser.fullName}, الجهاز: ${currentDeviceId}`);
-    onLogin(updatedUser);
   };
 
   const handleAdminSubmit = async (e: React.FormEvent) => {
@@ -297,43 +270,38 @@ export default function Login({
 
     const user = adminUsername.trim();
     const pass = adminPassword.trim();
+    
+    // 1. Local Check (Configured from single source of truth in App.tsx)
+    const isLocalValid = user === adminConfig.adminUsername && pass === adminConfig.adminPassword;
 
-    const syncTargetUrl = adminConfig.syncUrl || adminConfig.googleSheetLink;
-
-    if (!syncTargetUrl) {
-      setError('لم يتم ربط التطبيق بالخادم بعد. يرجى المحاولة بعد قليل.');
+    if (isLocalValid) {
+      logAction('تسجيل دخول مسؤول (محلي)', `المسؤول: ${user}`);
+      onLogin({ id: 'admin-id', fullName: 'المسؤول', nationalId: '000', role: 'admin' });
       setIsLoading(false);
       return;
     }
 
-    // التحقق يتم في السيرفر فقط مقابل admin_pass في ورقة Config.
-    // لا توجد أي كلمة مرور مخزّنة في كود التطبيق.
-    try {
-      const response = await fetch(syncTargetUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'adminLogin', username: user, password: pass })
-      });
-      const data = await response.json();
-
-      if (data && data.success) {
-        logAction('تسجيل دخول مسؤول', `المسؤول: ${user}`);
-        onLogin({ id: 'admin-id', fullName: `المسؤول (${user})`, nationalId: '000', role: 'admin' });
-        setIsLoading(false);
-        return;
+    // 2. Cloud Check (if syncUrl is available) - To match ReportsView behavior
+    if (adminConfig.syncUrl) {
+      try {
+        const response = await fetch(`${adminConfig.syncUrl}?action=getReportData&user=${encodeURIComponent(user)}&pass=${encodeURIComponent(pass)}`);
+        const data = await response.json();
+        
+        if (!data.error) {
+          // If cloud accepts, allow access to management
+          logAction('تسجيل دخول مسؤول (سحابي)', `المسؤول: ${user}`);
+          onLogin({ id: 'admin-id', fullName: `المسؤول (${user})`, nationalId: '000', role: 'admin' });
+          setIsLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.error("Cloud admin check failed", err);
       }
-
-      logAction('فشل تسجيل دخول مسؤول', `المحاولة باسم: ${user}`);
-      setError(data?.error || 'بيانات المسؤول غير صحيحة.');
-      setIsLoading(false);
-      return;
-    } catch (err) {
-      console.error("Admin login failed", err);
-      logAction('فشل تسجيل دخول مسؤول', `السبب: تعذر الاتصال بالخادم`);
-      setError('تعذر الاتصال بالخادم للتحقق. تأكد من الاتصال بالإنترنت وحاول مجدداً.');
-      setIsLoading(false);
-      return;
     }
+
+    logAction('فشل تسجيل دخول مسؤول', `المحاولة باسم: ${user}`);
+    setError('بيانات المسؤول غير صحيحة. تأكد من حالة الأحرف (B كبيرة) أو استخدم بيانات تقارير المسؤول');
+    setIsLoading(false);
   };
 
   const inputClasses = "w-full px-4 py-3.5 rounded-2xl border border-slate-600 bg-slate-900 text-white placeholder:text-slate-500 font-bold outline-none focus:border-blue-500 transition-all shadow-inner";
