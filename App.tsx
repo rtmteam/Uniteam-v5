@@ -246,6 +246,21 @@ const App: React.FC = () => {
   }, [isOnline, config.syncUrl, syncWithCloud, currentUser]);
 
   // Check for global updates from GitHub static file
+  // تفعيل فوري لشاشة الصيانة حين تكتشفها شاشة الموظف لحظة الضغط على
+  // حضور أو انصراف، دون انتظار دورة الفحص التالية
+  useEffect(() => {
+    const onMaintenance = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      setMaintenance({
+        active: true,
+        title: detail.title || 'التطبيق تحت الصيانة',
+        message: detail.message || 'يجري تحديث النظام حالياً. حاول مرة أخرى بعد قليل.'
+      });
+    };
+    window.addEventListener('uniteam:maintenance', onMaintenance);
+    return () => window.removeEventListener('uniteam:maintenance', onMaintenance);
+  }, []);
+
   useEffect(() => {
     const checkForUpdates = async () => {
       if (!navigator.onLine) return;
