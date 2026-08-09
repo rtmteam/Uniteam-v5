@@ -5,7 +5,7 @@ import Login from './components/Login';
 import AdminDashboard from './components/AdminDashboard';
 import UserDashboard from './components/UserDashboard';
 import ReportsView from './components/ReportsView';
-import { ShieldCheck, User as UserIcon, Cloud, CloudOff, RefreshCw, FileSpreadsheet, Home, Download, Share, PlusSquare, X, Wifi, LogOut, ShieldAlert, AlertTriangle, Smartphone } from 'lucide-react';
+import { ShieldCheck, User as UserIcon, Cloud, CloudOff, RefreshCw, FileSpreadsheet, Home, Download, Share, PlusSquare, X, Wifi, LogOut, ShieldAlert, AlertTriangle, Smartphone, Settings } from 'lucide-react';
 import { syncTimeWithServer, checkDeveloperOptionsStatus, getDeviceFingerprint } from './utils';
 
 // ==========================================
@@ -35,6 +35,14 @@ const App: React.FC = () => {
 
   // Developer Options Security Detection
   const [developerModeStatus, setDeveloperModeStatus] = useState<{ enabled: boolean; source: string }>({ enabled: false, source: '' });
+
+  // مفتاح الصيانة: يُقرأ من server-config.json ليمكن إيقاف التطبيق
+  // عن الموظفين أثناء التحديث دون إيقاف نشر الموقع
+  const [maintenance, setMaintenance] = useState<{ active: boolean; title: string; message: string }>({
+    active: false,
+    title: 'التطبيق تحت الصيانة',
+    message: 'يجري تحديث النظام حالياً. حاول مرة أخرى بعد قليل.'
+  });
 
   useEffect(() => {
     const checkDevMode = () => {
@@ -245,6 +253,15 @@ const App: React.FC = () => {
         const res = await fetch('./server-config.json?t=' + Date.now());
         if (res.ok) {
           const data = await res.json();
+
+          // مفتاح الصيانة يُقرأ قبل أي شيء آخر، فهو يحجب الواجهة كاملة
+          setMaintenance({
+            active: data && data.maintenance === true,
+            title: (data && data.maintenanceTitle) || 'التطبيق تحت الصيانة',
+            message: (data && data.maintenanceMessage) ||
+                     'يجري تحديث النظام حالياً. حاول مرة أخرى بعد قليل.'
+          });
+
           if (data && data.googleSheetLink && data.googleSheetLink.startsWith('http')) {
             const saved = localStorage.getItem('attendance_config');
             const currentConfig = saved ? JSON.parse(saved) : null;
@@ -330,6 +347,35 @@ const App: React.FC = () => {
 
   // Determine if we should show an install button (Android or iOS web)
   const showInstallButton = !isInStandaloneMode && (installPrompt || isIos);
+
+  // شاشة الصيانة تحجب الواجهة كاملة، وتُفعَّل بتغيير حقل واحد
+  // في server-config.json دون الحاجة لإيقاف نشر الموقع
+  if (maintenance.active) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 bg-slate-900 relative z-10">
+        <div className="w-full max-w-sm text-center">
+          <div className="inline-flex items-center justify-center w-24 h-24 rounded-3xl bg-slate-800 border border-slate-700 mb-7">
+            <Settings size={44} className="text-amber-500 animate-spin" style={{ animationDuration: '4s' }} />
+          </div>
+
+          <h1 className="text-xl font-black text-slate-100 mb-3">{maintenance.title}</h1>
+          <p className="text-slate-400 text-sm leading-loose mb-8">{maintenance.message}</p>
+
+          <button
+            onClick={() => window.location.reload()}
+            className="w-full bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold py-4 rounded-2xl transition-colors"
+          >
+            إعادة المحاولة
+          </button>
+
+          <div className="mt-6 text-xs text-slate-500 flex items-center justify-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+            <span>سيعود التطبيق تلقائياً عند انتهاء الصيانة</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col relative z-10">
