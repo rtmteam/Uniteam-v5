@@ -336,12 +336,25 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
 
     try {
         let activeLink = googleSheetLink;
-        
+        let maintenanceActive = false;
+        let maintenanceTitle = '';
+        let maintenanceMessage = '';
+
         // جلب أحدث رابط من السيرفر قبل التسجيل مباشرة لضمان عدم استخدام رابط قديم
         try {
             const configRes = await fetch('./server-config.json?t=' + Date.now());
             if (configRes.ok) {
                 const configData = await configRes.json();
+
+                // فحص وضع الصيانة من نفس الاستجابة قبل إرسال أي بيانات.
+                // الفحص الدوري في App.tsx يعمل كل بضع دقائق، وهذه الفجوة
+                // كانت تسمح بتسجيل الحضور بعد تفعيل الصيانة مباشرة.
+                if (configData && configData.maintenance === true) {
+                    maintenanceActive  = true;
+                    maintenanceTitle   = configData.maintenanceTitle || '';
+                    maintenanceMessage = configData.maintenanceMessage || '';
+                }
+
                 if (configData && configData.googleSheetLink && configData.googleSheetLink.startsWith('http')) {
                     activeLink = configData.googleSheetLink;
                     // تحديث التخزين المحلي بصمت
@@ -366,6 +379,27 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
             }
         } catch (e) {
             console.warn("Could not verify latest link, proceeding with current.");
+        }
+
+        // وضع الصيانة يوقف التسجيل قبل إرسال أي شيء للخادم،
+        // ويُبلغ App.tsx ليعرض شاشة الصيانة فوراً دون انتظار الفحص الدوري.
+        if (maintenanceActive) {
+            const msg = 'التطبيق تحت الصيانة حالياً، لا يمكن تسجيل الحضور أو الانصراف. '
+                      + (maintenanceMessage || 'حاول مرة أخرى بعد قليل.');
+            setStatus({ type: 'error', msg });
+            logAction(
+                `فشل تسجيل ${type === 'check-in' ? 'حضور' : 'انصراف'} (وضع الصيانة)`,
+                `السبب: وضع الصيانة مفعّل من الإدارة | الإحداثيات: ${lat}, ${lng}`
+            );
+
+            try {
+                window.dispatchEvent(new CustomEvent('uniteam:maintenance', {
+                    detail: { title: maintenanceTitle, message: maintenanceMessage }
+                }));
+            } catch (e) {}
+
+            setIsVerifying(false);
+            return;
         }
 
         if (!activeLink) {
