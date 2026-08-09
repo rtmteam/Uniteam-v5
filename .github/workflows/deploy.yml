@@ -28,6 +28,16 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
+      # أيقونة واحدة في resources/icon.png تخدم الموقع والتطبيق معاً
+      - name: Generate web icons
+        run: |
+          if [ -f "resources/icon.png" ]; then
+            python3 -m pip install --quiet --upgrade pillow
+            python3 native/android/generate-web-icons.py resources/icon.png public
+          else
+            echo "لا توجد resources/icon.png - ستُستخدم الأيقونات الموجودة في public"
+          fi
+
       - name: Build
         run: npm run build
 

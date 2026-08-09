@@ -258,7 +258,15 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
             });
         } catch (error) {
             setIsVerifying(false);
-            const msg = 'تعذر تحديد الموقع الحالي بدقة. تأكد من تفعيل GPS والمحاولة مرة أخرى.';
+            const geoErr = error as GeolocationPositionError;
+            let msg = 'تعذر تحديد الموقع الحالي بدقة. تأكد من تفعيل GPS والمحاولة مرة أخرى.';
+            if (geoErr && geoErr.code === 1) {
+              msg = 'إذن الوصول للموقع مرفوض. افتح إعدادات الهاتف ← التطبيقات ← Uniteam ← الأذونات ← الموقع، واختر "السماح أثناء استخدام التطبيق"، ثم أعد المحاولة.';
+            } else if (geoErr && geoErr.code === 2) {
+              msg = 'تعذر الوصول لخدمة الموقع. تأكد من تفعيل GPS في الهاتف ومن أنك لست في مكان مغلق تماماً.';
+            } else if (geoErr && geoErr.code === 3) {
+              msg = 'انتهت مهلة تحديد الموقع. اخرج لمكان مكشوف قليلاً وأعد المحاولة.';
+            }
             setStatus({ type: 'error', msg });
             logAction(`فشل تسجيل ${type === 'check-in' ? 'حضور' : 'انصراف'}`, `السبب: ${msg}`);
             return;

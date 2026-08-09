@@ -30,32 +30,83 @@ export const formatDate = (dateStr: string) => {
  * وعلى المتصفح ينشئ بصمة عتادية فريدة محفورة ومخزنة بآلية غير قابلة للمسح بسهولة
  */
 export const getDeviceFingerprint = (): string => {
-  // 1. الفحص من خلال Android Native Bridge (عند التشغيل داخل تطبيق APK)
   const win = window as any;
+
+  // 1. المصدر الأدق: ANDROID_ID من نظام الأندرويد عبر الجسر الأصلي.
+  //    ثابت عند حذف التطبيق وإعادة تثبيته ما دام مفتاح التوقيع لم يتغير.
   if (win.AndroidBridge && typeof win.AndroidBridge.getAndroidId === 'function') {
-    const androidId = win.AndroidBridge.getAndroidId();
-    if (androidId && androidId.length > 5) return 'android_' + androidId;
+    try {
+      const androidId = win.AndroidBridge.getAndroidId();
+      if (androidId && String(androidId).length > 5) {
+        const canonical = 'android_' + androidId;
+        // نحفظ نسخة محلية ليبقى المعرّف متاحاً لو تعطّل الجسر لاحقاً
+        try { localStorage.setItem('uniteam_device_token', canonical); } catch (e) {}
+        return canonical;
+      }
+    } catch (e) {}
   }
+
+  // 2. نفس المعرّف عبر الغلاف المساعد، وهو يعيده بالصيغة الموحّدة نفسها
   if (win.UniteamNative && typeof win.UniteamNative.getDeviceId === 'function') {
-    const nativeId = win.UniteamNative.getDeviceId();
-    if (nativeId) return 'native_' + nativeId;
-  }
-  if (win.Capacitor && win.Capacitor.isNativePlatform?.()) {
-    const capId = localStorage.getItem('uniteam_cap_device_id');
-    if (capId) return capId;
+    try {
+      const nativeId = win.UniteamNative.getDeviceId();
+      if (nativeId && String(nativeId).indexOf('android_') === 0) {
+        try { localStorage.setItem('uniteam_device_token', nativeId); } catch (e) {}
+        return nativeId;
+      }
+    } catch (e) {}
   }
 
   // 2. الفحص والتخزين للويب مع بناء بصمة عتادية دقيقة (Hardware Fingerprint)
   let deviceId = localStorage.getItem('uniteam_device_token');
+
+  // ترقية المعرّفات القديمة إلى الصيغة المعتمدة.
+  // نسخ سابقة من التطبيق ولّدت معرّفات ببادئات مختلفة (dev_ / native_dev_ / native_hw_)،
+  // وهي محفوظة في متصفحات الموظفين ولا يمسحها تصفير الأجهزة من لوحة المشرف.
+  // بدون هذا السطر ستعود البادئة القديمة إلى الشيت عند إعادة التسجيل.
+  // الصيغتان المعتمدتان فقط: android_ من التطبيق، و hw_ من المتصفح.
+  if (deviceId && !/^(hw_|android_)/.test(deviceId)) {
+    try { localStorage.removeItem('uniteam_device_token'); } catch (e) {}
+    deviceId = null;
+  }
+
+  // إبطال المعرّفات المولّدة بالطريقة المعيبة السابقة.
+  // كانت تبني نصاً يبدأ بمقاس الشاشة ثم تشفّره وتقتطع أول 18 حرفاً،
+  // و18 حرف base64 تمثّل أول 13 بايت فقط - أي مقاس الشاشة وحده،
+  // فيُقطع الجزء العشوائي بالكامل ويحصل كل جهازين متطابقي المواصفات
+  // على المعرّف نفسه. تُكتشف هذه المعرّفات بفك تشفيرها والبحث عن نمط المقاس.
+  if (deviceId && deviceId.indexOf('hw_') === 0) {
+    try {
+      // 16 حرف base64 تُفك إلى 12 بايت، وقد ينتهي المقاس عندها بلا شرطة سفلية
+      const decoded = atob(deviceId.substring(3, 19));
+      if (/^\d{2,5}x\d{2,5}x\d{1,2}(_|$)/.test(decoded)) {
+        try { localStorage.removeItem('uniteam_device_token'); } catch (e) {}
+        deviceId = null;
+      }
+    } catch (e) {
+      // ليس نصاً مشفّراً بـ base64 - معرّف بالصيغة الجديدة، يُترك كما هو
+    }
+  }
+
   if (!deviceId) {
-    // بناء بصمة فريدة تعتمد على شاشة ومعالج ونظام الجهاز
-    const nav = navigator as any;
-    const screenInfo = `${window.screen.width}x${window.screen.height}x${window.screen.colorDepth}`;
-    const hardwareInfo = `${nav.hardwareConcurrency || 4}_${nav.deviceMemory || 4}`;
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const rawHash = `${screenInfo}_${hardwareInfo}_${tz}_${Math.random().toString(36).substring(2, 10)}_${Date.now()}`;
-    
-    deviceId = 'hw_' + btoa(rawHash).replace(/=/g, '').substring(0, 18);
+    // معرّف عشوائي بالكامل. الاعتماد على مواصفات العتاد غير مجدٍ هنا:
+    // ملايين الهواتف تشترك في مقاس الشاشة وعدد الأنوية، فلا تضيف تمييزاً.
+    let random = '';
+    try {
+      const buffer = new Uint8Array(24);
+      (window.crypto || (window as any).msCrypto).getRandomValues(buffer);
+      random = Array.prototype.map
+        .call(buffer, (b: number) => b.toString(36))
+        .join('');
+    } catch (e) {
+      random = '';
+    }
+    // بديل للمتصفحات القديمة التي لا تدعم crypto
+    while (random.length < 18) {
+      random += Math.random().toString(36).substring(2) + Date.now().toString(36);
+    }
+
+    deviceId = 'hw_' + random.replace(/[^a-z0-9]/g, '').substring(0, 18);
     localStorage.setItem('uniteam_device_token', deviceId);
     
     // حفظ نسخة احتياطية في IndexedDB لضمان بقاء الرقم نفسه حتى لو قام الموظف بمسح التخزين المحلي
@@ -83,17 +134,41 @@ export const getDeviceFingerprint = (): string => {
 export const checkDeveloperOptionsStatus = (): { enabled: boolean; source: string } => {
   const win = window as any;
 
-  // 1. فحص عبر Android Native Bridge داخل ملف الـ APK
+  // 1. القراءة المباشرة من إعدادات نظام الأندرويد عبر الجسر الأصلي
   if (win.AndroidBridge && typeof win.AndroidBridge.isDeveloperOptionsEnabled === 'function') {
     try {
       const isDev = win.AndroidBridge.isDeveloperOptionsEnabled();
-      if (isDev) return { enabled: true, source: 'Android Native Settings' };
+      if (isDev) {
+        let detail = '';
+        try {
+          if (typeof win.AndroidBridge.getDeveloperOptionsDetail === 'function') {
+            detail = win.AndroidBridge.getDeveloperOptionsDetail() || '';
+          }
+        } catch (e) {}
+        return {
+          enabled: true,
+          source: detail ? `إعدادات النظام - ${detail}` : 'إعدادات نظام الأندرويد'
+        };
+      }
+      // الجسر موجود وأكد أن الجهاز سليم، فلا حاجة لفحوصات تقديرية
+      return { enabled: false, source: 'System Clean' };
     } catch (e) {}
   }
   if (win.UniteamNative && typeof win.UniteamNative.isDeveloperMode === 'function') {
     try {
       const isDev = win.UniteamNative.isDeveloperMode();
-      if (isDev) return { enabled: true, source: 'Uniteam Native Bridge' };
+      if (isDev) {
+        let detail = '';
+        try {
+          if (typeof win.UniteamNative.getDeveloperModeDetail === 'function') {
+            detail = win.UniteamNative.getDeveloperModeDetail() || '';
+          }
+        } catch (e) {}
+        return {
+          enabled: true,
+          source: detail ? `إعدادات النظام - ${detail}` : 'Uniteam Native Bridge'
+        };
+      }
     } catch (e) {}
   }
 
@@ -128,11 +203,38 @@ export const checkMockLocationStatus = (position?: GeolocationPosition): { isFak
     }
   }
 
-  // 3. فحص من خلال Native Android Bridge إذا كان متوفراً
+  // 3. الفحص العميق عبر الجسر الأصلي: علم isMock على إحداثيات النظام،
+  //    أو وجود تطبيق ممنوح صلاحية "تعيين موقع وهمي"
   if (win.AndroidBridge && typeof win.AndroidBridge.isMockLocationActive === 'function') {
     try {
       if (win.AndroidBridge.isMockLocationActive()) {
-        return { isFake: true, reason: 'تم كشف عمل برنامج Fake Location في الخلفية بواسطة نظام الأندرويد' };
+        let detail = '';
+        try {
+          if (typeof win.AndroidBridge.getMockLocationDetail === 'function') {
+            detail = win.AndroidBridge.getMockLocationDetail() || '';
+          }
+        } catch (e) {}
+        return {
+          isFake: true,
+          reason: detail || 'تم كشف نشاط موقع وهمي بواسطة نظام الأندرويد'
+        };
+      }
+    } catch (e) {}
+  }
+
+  if (win.UniteamNative && typeof win.UniteamNative.isMockLocation === 'function') {
+    try {
+      if (win.UniteamNative.isMockLocation()) {
+        let detail = '';
+        try {
+          if (typeof win.UniteamNative.getMockLocationDetail === 'function') {
+            detail = win.UniteamNative.getMockLocationDetail() || '';
+          }
+        } catch (e) {}
+        return {
+          isFake: true,
+          reason: detail || 'تم كشف نشاط موقع وهمي بواسطة نظام الأندرويد'
+        };
       }
     } catch (e) {}
   }
