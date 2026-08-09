@@ -107,12 +107,24 @@
         <path d="M30 92 C30 83 36.5 78 44 78 C51.5 78 58 83 58 92" fill="#475569"/>
         <path d="M70 66 C77 66 82 71.5 82 78 C82 86 70 95 70 95 C70 95 58 86 58 78 C58 71.5 63 66 70 66 Z" fill="#334155" stroke="#64748b" stroke-width="2.5"/>
         <path d="M65 78 L69 82 L76 74" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-        <line x1="22" y1="22" x2="82" y2="82" stroke="#ef4444" stroke-width="4.5" stroke-linecap="round" opacity="0.85"/>
+        <!-- شطبة حمراء لانقطاع الاتصال، تُخفى في حالة الصيانة -->
+        <line id="slash" x1="22" y1="22" x2="82" y2="82" stroke="#ef4444" stroke-width="4.5" stroke-linecap="round" opacity="0.85"/>
+        <!-- تروس الصيانة، مخفية افتراضياً -->
+        <g id="gear" style="display:none">
+          <circle cx="52" cy="52" r="17" fill="none" stroke="#f59e0b" stroke-width="4"/>
+          <circle cx="52" cy="52" r="6" fill="#f59e0b"/>
+          <g stroke="#f59e0b" stroke-width="4" stroke-linecap="round">
+            <line x1="52" y1="27" x2="52" y2="35"/>
+            <line x1="52" y1="69" x2="52" y2="77"/>
+            <line x1="27" y1="52" x2="35" y2="52"/>
+            <line x1="69" y1="52" x2="77" y2="52"/>
+          </g>
+        </g>
       </svg>
     </div>
 
-    <h1>لا يوجد اتصال بالإنترنت</h1>
-    <p>يحتاج التطبيق إلى اتصال لتحميل بياناتك.<br>فعّل بيانات الهاتف أو الواي فاي ثم أعد المحاولة.</p>
+    <h1 id="title">لا يوجد اتصال بالإنترنت</h1>
+    <p id="message">يحتاج التطبيق إلى اتصال لتحميل بياناتك.<br>فعّل بيانات الهاتف أو الواي فاي ثم أعد المحاولة.</p>
 
     <button id="retry" type="button">إعادة المحاولة</button>
 
@@ -127,6 +139,10 @@
       var btn      = document.getElementById('retry');
       var dot      = document.getElementById('dot');
       var status   = document.getElementById('status');
+      var title    = document.getElementById('title');
+      var message  = document.getElementById('message');
+      var slash    = document.getElementById('slash');
+      var gear     = document.getElementById('gear');
       var BTN_TEXT = 'إعادة المحاولة';
 
       /** الجسر الأصلي متاح داخل التطبيق فقط، وغير موجود في المتصفح */
@@ -148,11 +164,35 @@
         return navigator.onLine;
       }
 
+      /**
+       * الصفحة نفسها تظهر لسببين مختلفين تماماً:
+       *   - الهاتف غير متصل بالإنترنت
+       *   - الهاتف متصل لكن الخدمة متوقفة (إيقاف النشر أو صيانة أو عطل خادم)
+       * عرض رسالة "لا يوجد اتصال" في الحالة الثانية يضلّل الموظف،
+       * فيظل يعبث بإعدادات الشبكة بلا فائدة.
+       */
+      function setMode(maintenance) {
+        if (maintenance) {
+          title.textContent = 'التطبيق تحت الصيانة';
+          message.innerHTML = 'يجري تحديث النظام حالياً.<br>حاول مرة أخرى بعد قليل.';
+          slash.style.display = 'none';
+          gear.style.display  = '';
+        } else {
+          title.textContent = 'لا يوجد اتصال بالإنترنت';
+          message.innerHTML = 'يحتاج التطبيق إلى اتصال لتحميل بياناتك.<br>فعّل بيانات الهاتف أو الواي فاي ثم أعد المحاولة.';
+          slash.style.display = '';
+          gear.style.display  = 'none';
+        }
+      }
+
       function render() {
         if (isOnline()) {
+          // الاتصال سليم، إذن العطل من جهة الخدمة لا من جهة الموظف
+          setMode(true);
           dot.className = 'dot online';
-          status.textContent = 'عاد الاتصال — اضغط إعادة المحاولة';
+          status.textContent = 'الاتصال سليم — الخدمة غير متاحة حالياً';
         } else {
+          setMode(false);
           dot.className = 'dot';
           status.textContent = 'الجهاز غير متصل بالإنترنت';
         }
@@ -192,7 +232,7 @@
 
         // إن لم يحدث أي تنقّل خلال 8 ثوانٍ نُعيد الزر لحالته
         setTimeout(function () {
-          if (btn.disabled) resetButton('تعذّر الوصول للخادم — حاول مرة أخرى');
+          if (btn.disabled) resetButton('الخدمة ما زالت غير متاحة — حاول بعد قليل');
         }, 8000);
       });
 

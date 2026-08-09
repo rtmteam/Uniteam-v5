@@ -77,11 +77,29 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2) التنقّل بين الصفحات: الشبكة أولاً والكاش احتياط
+  // 2) التنقّل بين الصفحات
+  //
+  //    الشبكة أولاً، لكن مع فحص رمز الاستجابة أيضاً لا الأخطاء الشبكية وحدها.
+  //    السبب أن إيقاف نشر الموقع يجعل الخادم يعيد 404 ومعه صفحة خطأ كاملة،
+  //    وهذه استجابة "ناجحة" تقنياً فلا يلتقطها catch، فتظهر صفحة الخادم للموظف.
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
-        .catch(() => caches.match('./index.html', { ignoreSearch: true }))
+        .then(function (response) {
+          if (response && response.ok) {
+            return response;
+          }
+          // الخادم رد بخطأ (404 عند إيقاف النشر، أو 5xx عند تعطّله)
+          return caches.match('./offline.html', { ignoreSearch: true })
+            .then(function (page) { return page || response; });
+        })
+        .catch(function () {
+          // فشل شبكي حقيقي: لا اتصال بالإنترنت
+          return caches.match('./offline.html', { ignoreSearch: true })
+            .then(function (page) {
+              return page || caches.match('./index.html', { ignoreSearch: true });
+            });
+        })
     );
     return;
   }
