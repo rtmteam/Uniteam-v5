@@ -1,0 +1,458 @@
+/* ==========================================================================
+   Uniteam — نظام الألوان
+   كحلي عميق + أزرق كهربائي + توهّج مدروس
+   طبقة إضافية لا تلغي Tailwind، فيمكن تبنّيها تدريجياً
+   ========================================================================== */
+
+:root {
+  /* ---------- الكحلي: أسطح داكنة ---------- */
+  --nv-950: #050B18;
+  --nv-900: #0A1428;
+  --nv-850: #0E1B33;
+  --nv-800: #122341;
+  --nv-700: #1A3157;
+  --nv-600: #244274;
+  --nv-500: #2E5493;
+
+  /* ---------- الأزرق الكهربائي: الهوية ---------- */
+  --el-700: #1B4FD8;
+  --el-600: #2563EB;
+  --el-500: #3B82F6;
+  --el-400: #60A5FA;
+  --el-300: #93C5FD;
+  --el-200: #BFDBFE;
+  --el-100: #DBEAFE;
+  --el-50:  #EFF6FF;
+
+  /* ---------- سماوي مساعد للتوهّج ---------- */
+  --cy-500: #06B6D4;
+  --cy-400: #22D3EE;
+  --cy-300: #67E8F9;
+
+  /* ---------- الأسطح الفاتحة ---------- */
+  --bg:      #F4F7FC;
+  --surface: #FFFFFF;
+  --surface-2: #F8FAFD;
+  --line:    #E3E9F2;
+  --line-2:  #CFD9E8;
+
+  /* ---------- النصوص ---------- */
+  --tx:    #0B1524;
+  --tx-2:  #55677F;
+  --tx-3:  #8A9BB2;
+  --on-dark:   #E9F0FA;
+  --on-dark-2: #92A8C8;
+
+  /* ---------- الحالات ---------- */
+  --ok: #10B981;      --ok-bg: #E7F8F1;   --ok-glow: rgba(16,185,129,.35);
+  --warn: #F59E0B;    --warn-bg: #FEF4E2; --warn-glow: rgba(245,158,11,.35);
+  --bad: #EF4444;     --bad-bg: #FDECEC;  --bad-glow: rgba(239,68,68,.35);
+  --leave: #8B5CF6;   --leave-bg: #F1EBFE;
+  --offsite: #06B6D4; --offsite-bg: #E2F7FB;
+
+  /* ---------- التدرجات ---------- */
+  --grad-brand: linear-gradient(135deg, #2563EB 0%, #1B4FD8 55%, #06B6D4 100%);
+  --grad-navy:  linear-gradient(180deg, #0E1B33 0%, #050B18 100%);
+  --grad-sheen: linear-gradient(135deg, rgba(255,255,255,.22) 0%, rgba(255,255,255,0) 60%);
+  --grad-ok:    linear-gradient(135deg, #10B981 0%, #059669 100%);
+  --grad-warn:  linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+  --grad-bad:   linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+
+  /* ---------- الظلال والتوهّج ---------- */
+  --sh-1: 0 1px 2px rgba(11,21,36,.06);
+  --sh-2: 0 4px 14px rgba(11,21,36,.08), 0 1px 3px rgba(11,21,36,.05);
+  --sh-3: 0 12px 34px rgba(11,21,36,.12), 0 3px 8px rgba(11,21,36,.06);
+  --glow-brand: 0 6px 22px rgba(37,99,235,.38);
+  --glow-soft:  0 0 0 4px rgba(37,99,235,.12);
+
+  --r-sm: 8px; --r: 12px; --r-lg: 16px; --r-xl: 22px; --r-full: 999px;
+}
+
+/* ==========================================================================
+   الشعار
+   ========================================================================== */
+.ut-logo {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 28%;
+  background: var(--grad-brand);
+  box-shadow: var(--glow-brand);
+  flex: none;
+  overflow: hidden;
+}
+.ut-logo::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: var(--grad-sheen);
+  pointer-events: none;
+}
+.ut-logo svg { position: relative; z-index: 1; }
+
+.ut-logo--flat { box-shadow: var(--sh-1); }
+.ut-logo--ghost { background: rgba(255,255,255,.08); box-shadow: none; }
+.ut-logo--ghost::after { display: none; }
+
+.ut-wordmark {
+  font-weight: 700; letter-spacing: -.02em;
+  background: var(--grad-brand);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+}
+
+/* ==========================================================================
+   نبضة الحالة
+   ========================================================================== */
+.ut-pulse { position: relative; display: inline-flex; width: 8px; height: 8px; }
+.ut-pulse::before {
+  content: ''; position: absolute; inset: 0; border-radius: 50%;
+  background: currentColor; opacity: .55;
+  animation: ut-ping 1.8s cubic-bezier(0,0,.2,1) infinite;
+}
+.ut-pulse::after {
+  content: ''; position: relative; width: 8px; height: 8px;
+  border-radius: 50%; background: currentColor;
+}
+@keyframes ut-ping { 75%, 100% { transform: scale(2.1); opacity: 0 } }
+
+/* ==========================================================================
+   الترويسة
+   ========================================================================== */
+.ut-header {
+  background: var(--grad-navy);
+  border-bottom: 1px solid rgba(255,255,255,.07);
+  position: relative;
+}
+.ut-header::before {
+  content: '';
+  position: absolute; inset-inline-end: -60px; top: -120px;
+  width: 320px; height: 320px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(37,99,235,.35) 0%, rgba(37,99,235,0) 70%);
+  pointer-events: none;
+}
+.ut-header__title { color: var(--on-dark); font-weight: 700; letter-spacing: -.02em; }
+.ut-header__sub   { color: var(--on-dark-2); }
+
+.ut-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 24px; padding: 0 10px; border-radius: var(--r-full);
+  font-size: 11px; font-weight: 600;
+  background: rgba(255,255,255,.09); color: var(--on-dark-2);
+  border: 1px solid rgba(255,255,255,.08);
+}
+.ut-chip--ok    { background: rgba(16,185,129,.14);  color: #6EE7B7; border-color: rgba(16,185,129,.25); }
+.ut-chip--warn  { background: rgba(245,158,11,.14);  color: #FCD34D; border-color: rgba(245,158,11,.25); }
+.ut-chip--bad   { background: rgba(239,68,68,.14);   color: #FCA5A5; border-color: rgba(239,68,68,.25); }
+.ut-chip--brand { background: rgba(37,99,235,.18);   color: #93C5FD; border-color: rgba(37,99,235,.3); }
+
+/* ==========================================================================
+   أزرار الهوية
+   ========================================================================== */
+.ut-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  height: 38px; padding: 0 16px; border: 0; border-radius: var(--r);
+  font-family: inherit; font-size: 13px; font-weight: 700; line-height: 1;
+  cursor: pointer; white-space: nowrap;
+  transition: transform .08s ease, box-shadow .18s ease, filter .18s ease;
+}
+.ut-btn:active:not(:disabled) { transform: scale(.97); }
+.ut-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.ut-btn--brand { background: var(--grad-brand); color: #fff; box-shadow: var(--glow-brand); }
+.ut-btn--brand:hover:not(:disabled) { filter: brightness(1.08); }
+
+.ut-btn--glass {
+  background: rgba(255,255,255,.1); color: var(--on-dark);
+  border: 1px solid rgba(255,255,255,.14);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.ut-btn--glass:hover:not(:disabled) { background: rgba(255,255,255,.16); }
+
+/* ==========================================================================
+   بطاقات
+   ========================================================================== */
+.ut-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-2);
+}
+.ut-card--dark {
+  background: var(--grad-navy);
+  border-color: rgba(255,255,255,.07);
+  color: var(--on-dark);
+  box-shadow: var(--sh-3);
+}
+.ut-card--glow { box-shadow: var(--sh-2), var(--glow-soft); border-color: var(--el-200); }
+
+/* ==========================================================================
+   شريط علوي متدرّج رفيع — يوحّد هوية الصفحات
+   ========================================================================== */
+.ut-accent-bar { height: 3px; background: var(--grad-brand); border-radius: var(--r-full); }
+
+/* ==========================================================================
+   تجاوب
+   ========================================================================== */
+@media (max-width: 640px) {
+  .ut-header::before { width: 200px; height: 200px; top: -90px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ut-pulse::before { animation: none; }
+  .ut-btn { transition: none; }
+}
+
+/* ==========================================================================
+   لوحة الإدارة — شريط جانبي يميناً + محتوى بعرض كامل
+   ========================================================================== */
+.admin-shell {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.admin-side {
+  width: 236px;
+  flex: none;
+  position: sticky;
+  top: 84px;
+  background: var(--grad-navy);
+  border: 1px solid rgba(255, 255, 255, .07);
+  border-radius: var(--r-xl);
+  box-shadow: var(--sh-3);
+  padding: 14px 12px;
+  max-height: calc(100vh - 104px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-side__brand { display: flex; align-items: center; gap: 10px; padding: 4px 6px 12px; border-bottom: 1px solid rgba(255,255,255,.07); }
+.admin-side__brand-icon {
+  width: 34px; height: 34px; border-radius: 10px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--grad-brand); color: #fff; box-shadow: var(--glow-brand);
+}
+.admin-side__brand-name { font-size: 14px; font-weight: 700; color: var(--on-dark); }
+.admin-side__brand-sub  { font-size: 10.5px; color: var(--on-dark-2); margin-top: 3px; }
+
+.admin-side__nav { display: flex; flex-direction: column; gap: 3px; overflow-y: auto; flex: 1; }
+
+.admin-nav-item {
+  display: flex; align-items: center; gap: 11px;
+  width: 100%; padding: 10px 12px;
+  border: 0; border-radius: var(--r);
+  background: transparent; color: var(--on-dark-2);
+  font-family: inherit; font-size: 13px; font-weight: 600; text-align: start;
+  cursor: pointer; position: relative;
+  transition: background .15s ease, color .15s ease;
+}
+.admin-nav-item:hover { background: rgba(255, 255, 255, .06); color: var(--on-dark); }
+.admin-nav-item__icon { flex: none; }
+.admin-nav-item--active {
+  background: var(--grad-brand);
+  color: #fff;
+  box-shadow: var(--glow-brand);
+}
+
+.admin-side__foot { padding-top: 10px; border-top: 1px solid rgba(255,255,255,.07); }
+.admin-side__foot .ut-btn { width: 100%; }
+
+.admin-main { flex: 1; min-width: 0; }
+
+/* ---------- تابلت: الشريط يتقلّص لأيقونات ---------- */
+@media (max-width: 1100px) and (min-width: 861px) {
+  .admin-side { width: 66px; padding: 12px 8px; align-items: center; }
+  .admin-side__brand { border-bottom: 0; padding: 4px 0 10px; justify-content: center; }
+  .admin-side__brand .leading-none { display: none; }
+  .admin-nav-item { justify-content: center; padding: 11px 0; }
+  .admin-nav-item__label { display: none; }
+  .admin-side__foot .ut-btn { padding: 0; }
+}
+
+/* ---------- هاتف: شريط أفقي قابل للتمرير ---------- */
+@media (max-width: 860px) {
+  .admin-shell { flex-direction: column; gap: 12px; }
+  .admin-side {
+    width: 100%; position: static; max-height: none;
+    flex-direction: column; padding: 12px;
+  }
+  .admin-side__nav {
+    flex-direction: row; overflow-x: auto; gap: 6px;
+    scrollbar-width: none; -ms-overflow-style: none;
+    padding-bottom: 2px;
+  }
+  .admin-side__nav::-webkit-scrollbar { display: none; }
+  .admin-nav-item { flex: none; padding: 9px 14px; font-size: 12.5px; white-space: nowrap; }
+  .admin-side__foot { padding-top: 10px; }
+}
+
+/* ==========================================================================
+   الخط المميّز لاسم التطبيق
+   ========================================================================== */
+.ut-brandfont {
+  font-family: 'Sora', 'IBM Plex Sans Arabic', sans-serif;
+  font-weight: 800;
+  letter-spacing: -.03em;
+}
+
+/* اسم التطبيق في الترويسة — تدرّج + توهّج خفيف */
+.ut-brand {
+  font-family: 'Sora', sans-serif;
+  font-weight: 800;
+  letter-spacing: -.03em;
+  background: linear-gradient(100deg, #FFFFFF 0%, #BFDBFE 45%, #67E8F9 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  filter: drop-shadow(0 2px 10px rgba(96, 165, 250, .35));
+}
+
+/* اسم التطبيق في شاشة الدخول — أكبر وأفخم */
+.ut-brand-hero {
+  font-family: 'Sora', sans-serif;
+  font-weight: 800;
+  letter-spacing: -.045em;
+  line-height: 1;
+  background: linear-gradient(105deg, #FFFFFF 0%, #DBEAFE 38%, #67E8F9 78%, #FFFFFF 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  filter: drop-shadow(0 6px 26px rgba(59, 130, 246, .5));
+  animation: ut-shine 7s ease-in-out infinite;
+}
+@keyframes ut-shine { 0%,100% { background-position: 0% 50% } 50% { background-position: 100% 50% } }
+
+/* ==========================================================================
+   زر تثبيت التطبيق — متوهّج ليلفت الانتباه
+   ========================================================================== */
+.ut-install {
+  position: relative;
+  background-image: var(--grad-ok) !important;
+  color: #fff !important;
+  border: 0 !important;
+  animation: ut-breathe 2.4s ease-in-out infinite;
+}
+.ut-install::after {
+  content: '';
+  position: absolute; inset: -3px;
+  border-radius: inherit;
+  background: linear-gradient(120deg, rgba(16,185,129,.7), rgba(52,211,153,.2), rgba(16,185,129,.7));
+  filter: blur(9px);
+  opacity: .75;
+  z-index: -1;
+  animation: ut-breathe 2.4s ease-in-out infinite;
+}
+@keyframes ut-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,.55), 0 6px 18px rgba(16,185,129,.35); }
+  50%      { box-shadow: 0 0 0 10px rgba(16,185,129,0), 0 6px 26px rgba(16,185,129,.5); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ut-install, .ut-install::after, .ut-brand-hero { animation: none; }
+}
+
+/* ==========================================================================
+   خلفية التطبيق العامة
+   ========================================================================== */
+body {
+  background-color: #EEF3FB;
+  background-image:
+    radial-gradient(circle at 88% -6%, rgba(37, 99, 235, .14) 0%, rgba(37, 99, 235, 0) 42%),
+    radial-gradient(circle at 4% 100%, rgba(6, 182, 212, .12) 0%, rgba(6, 182, 212, 0) 40%);
+  background-attachment: fixed;
+}
+
+/* ==========================================================================
+   شاشة الدخول — قائمة جانبية
+   ========================================================================== */
+.login-shell {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.login-side {
+  background: var(--grad-navy);
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: var(--r-xl);
+  box-shadow: var(--sh-3);
+  padding: 20px 14px;
+  position: relative;
+  overflow: hidden;
+}
+.login-side::before {
+  content: '';
+  position: absolute; inset-inline-end: -50px; top: -70px;
+  width: 220px; height: 220px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(37,99,235,.4) 0%, rgba(37,99,235,0) 70%);
+  pointer-events: none;
+}
+.login-side__head { text-align: center; padding: 6px 0 18px; position: relative; }
+.login-side__sub  { font-size: 11px; color: var(--on-dark-2); margin-top: 8px; letter-spacing: .12em; }
+.login-side__nav  { display: flex; flex-direction: column; gap: 4px; position: relative; }
+
+.login-tab {
+  display: flex; align-items: center; gap: 11px;
+  width: 100%; padding: 12px 14px;
+  border: 1px solid transparent; border-radius: var(--r);
+  background: transparent; color: var(--on-dark-2);
+  font-family: inherit; font-size: 13.5px; font-weight: 600; text-align: start;
+  cursor: pointer;
+  transition: background .16s ease, color .16s ease, transform .08s ease;
+}
+.login-tab:hover { background: rgba(255,255,255,.06); color: var(--on-dark); }
+.login-tab:active { transform: scale(.985); }
+.login-tab--active {
+  background: var(--grad-brand); color: #fff;
+  box-shadow: var(--glow-brand);
+  border-color: rgba(255,255,255,.14);
+}
+.login-tab__icon { flex: none; }
+
+.login-side__note {
+  margin-top: 16px; padding: 12px;
+  border-radius: var(--r); border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.04);
+  font-size: 11px; line-height: 1.7; color: var(--on-dark-2);
+}
+
+@media (max-width: 820px) {
+  .login-shell { grid-template-columns: minmax(0, 1fr); }
+  .login-side__nav { flex-direction: row; overflow-x: auto; gap: 6px; }
+  .login-side__nav::-webkit-scrollbar { display: none; }
+  .login-tab { flex: none; padding: 10px 16px; white-space: nowrap; }
+  .login-side__note { display: none; }
+}
+
+/* ==========================================================================
+   شارة المسافة عن الفرع
+   ========================================================================== */
+.dist-chip {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; border-radius: var(--r);
+  border: 1px solid transparent;
+  font-size: 12.5px; font-weight: 600;
+}
+.dist-chip--in   { background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.3); color: #6EE7B7; }
+.dist-chip--out  { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.3); color: #FCD34D; }
+.dist-chip--wait { background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.1); color: var(--on-dark-2); }
+.dist-chip__num  { font-size: 17px; font-weight: 800; direction: ltr; }
+.dist-chip__bar  { height: 5px; border-radius: 99px; background: rgba(255,255,255,.1); overflow: hidden; margin-top: 6px; }
+.dist-chip__fill { height: 100%; border-radius: 99px; }
+
+/* ==========================================================================
+   لوحة الإدارة — الشريط لصق الحافة والمحتوى بكامل العرض
+   ========================================================================== */
+.admin-wide { max-width: none !important; padding-inline: 0 !important; }
+.admin-shell--edge { gap: 14px; padding-inline-start: 14px; }
+.admin-shell--edge .admin-side {
+  border-start-end-radius: 0; border-end-end-radius: 0;
+  border-inline-end: 0;
+  top: 76px;
+  max-height: calc(100vh - 88px);
+}
+@media (max-width: 860px) {
+  .admin-shell--edge { padding-inline: 12px; }
+  .admin-shell--edge .admin-side { border-radius: var(--r-xl); border-inline-end: 1px solid rgba(255,255,255,.07); }
+}
