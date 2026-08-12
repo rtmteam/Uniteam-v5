@@ -1,7 +1,12 @@
 package com.uniteam.attendance;
 
 import android.os.Bundle;
+import android.view.View;
 import android.webkit.WebView;
+
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -39,6 +44,8 @@ public class MainActivity extends BridgeActivity {
 
                     webView.addJavascriptInterface(bridge, "AndroidBridge");
                     android.util.Log.i("Uniteam", "AndroidBridge registered, appUrl=" + appUrl);
+
+                    applySystemBarInsets(webView);
                 }
             }
         } catch (Exception e) {
@@ -46,5 +53,33 @@ public class MainActivity extends BridgeActivity {
             // وتتحول واجهة الويب تلقائياً إلى البدائل المتاحة.
             android.util.Log.e("Uniteam", "AndroidBridge registration failed", e);
         }
+    }
+
+    /**
+     * إبعاد الواجهة عن شريط الحالة أعلى الشاشة وشريط التنقّل أسفلها.
+     *
+     * أندرويد 15 يفرض العرض من حافة إلى حافة على كل تطبيق مبنيّ بـ SDK 35
+     * فأعلى — والبناء هنا بـ SDK 36 — فيرسم النظام الشريطين فوق صفحة الويب
+     * ويختفي تحتهما جزء من الترويسة وشريط التثبيت السفلي.
+     *
+     * الاعتماد على env(safe-area-inset-*) في CSS وحده غير كافٍ: بعض إصدارات
+     * WebView لا تُبلّغ الصفحة بالقيم فتعود أصفاراً. أما قراءة الحواف من
+     * النظام مباشرة وتحويلها إلى حشو على الـ WebView فتعمل على كل الإصدارات.
+     *
+     * ما خلف الشريطين يظهر بلون خلفية النافذة المضبوط في capacitor.config.json
+     * (#0A1428) فيبدو امتداداً للترويسة الكحلية لا فراغاً أسود.
+     */
+    private void applySystemBarInsets(final View target) {
+        ViewCompat.setOnApplyWindowInsetsListener(target, (v, windowInsets) -> {
+            Insets bars = windowInsets.getInsets(
+                WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
+            );
+            v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            android.util.Log.i("Uniteam",
+                "insets top=" + bars.top + " bottom=" + bars.bottom +
+                " left=" + bars.left + " right=" + bars.right);
+            return WindowInsetsCompat.CONSUMED;
+        });
+        ViewCompat.requestApplyInsets(target);
     }
 }

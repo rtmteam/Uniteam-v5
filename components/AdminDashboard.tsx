@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { Branch, AttendanceRecord, AppConfig, User, Job, ReportAccount, VisitPlan } from '../types';
 import { MapPin, Table, Trash2, Shield, CloudUpload, Briefcase, RotateCcw, Globe, Users, Plus, FileSpreadsheet, Download, Share2, Smartphone, RefreshCw, Edit2, Check, X, Unlink, Key, Lock, Eye, EyeOff, Clock, Monitor, UserCheck, Calendar, Navigation, ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -62,6 +62,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const jobFileInputRef = useRef<HTMLInputElement>(null);
   const userFileInputRef = useRef<HTMLInputElement>(null);
   const planFileInputRef = useRef<HTMLInputElement>(null);
+
+  const ADMIN_TABS = [
+    { id: 'branches', label: 'الفروع', icon: MapPin },
+    { id: 'jobs', label: 'الوظائف', icon: Briefcase },
+    { id: 'users', label: 'الموظفون', icon: Users },
+    { id: 'plans', label: 'خطط الزيارات', icon: Navigation },
+    { id: 'holidays', label: 'الإجازات', icon: Calendar },
+    { id: 'report-access', label: 'صلاحيات التقارير', icon: Key },
+    { id: 'settings', label: 'الإعدادات', icon: Monitor }
+  ] as const;
 
   // وظيفة لتنسيق الوقت للعرض (AM/PM)
   const formatTimeDisplay = (timeStr: string | undefined) => {
@@ -410,63 +420,49 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <aside className="admin-side">
           <div className="admin-side__brand">
             <div className="admin-side__brand-icon"><Shield size={18} /></div>
-            <div className="leading-none">
+            <div className="leading-none flex-1">
               <div className="admin-side__brand-name">لوحة الإدارة</div>
               <div className="admin-side__brand-sub">Uniteam Admin</div>
             </div>
           </div>
 
           <nav className="admin-side__nav">
-            {[
-              { id: 'branches', label: 'الفروع', icon: MapPin },
-              { id: 'jobs', label: 'الوظائف', icon: Briefcase },
-              { id: 'users', label: 'الموظفون', icon: Users },
-              { id: 'plans', label: 'خطط الزيارات', icon: Navigation },
-              { id: 'holidays', label: 'الإجازات', icon: Calendar },
-              { id: 'report-access', label: 'صلاحيات التقارير', icon: Key },
-              { id: 'settings', label: 'الإعدادات', icon: Monitor }
-            ].map(tab => (
+            {ADMIN_TABS.map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
                 className={`admin-nav-item${activeTab === tab.id ? ' admin-nav-item--active' : ''}`}
                 title={tab.label}
               >
-                <tab.icon size={17} className="admin-nav-item__icon" />
+                <tab.icon size={16} className="admin-nav-item__icon" />
                 <span className="admin-nav-item__label">{tab.label}</span>
               </button>
             ))}
-          </nav>
-
-          <div className="admin-side__foot">
-            <button
-              onClick={() => { onRefresh(); logAction('تحديث البيانات', 'مزامنة البيانات مع السحابة'); }}
-              disabled={isSyncing}
-              className="ut-btn ut-btn--brand w-full"
+            <button 
+              onClick={() => pushToCloud()} 
+              disabled={isPushing} 
+              className="admin-nav-item admin-nav-item--cloud-save cursor-pointer"
+              title="حفظ كافة البيانات في السحابة"
             >
-              <RefreshCw size={15} className={isSyncing ? 'animate-spin' : ''} />
-              <span className="admin-nav-item__label">تحديث البيانات</span>
+              {isPushing ? <RotateCcw size={15} className="animate-spin text-orange-400" /> : <CloudUpload size={15} className="text-orange-400" />}
+              <span className="admin-nav-item__label">حفظ السحابة</span>
             </button>
-          </div>
+          </nav>
         </aside>
 
         {/* ===== المحتوى ===== */}
         <div className="admin-main">
       <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-2xl overflow-hidden p-4 md:p-6 text-white min-h-[400px]">
         {activeTab === 'users' && (
-           <div className="space-y-6">
-             <div className="flex justify-between items-center bg-slate-900/50 p-4 rounded-2xl border border-slate-700">
-               <div className="flex items-center gap-3">
-                 <Users size={20} className="text-blue-400" />
-                 <h3 className="text-sm font-black text-white uppercase tracking-tighter">سجل الموظفين</h3>
+           <div className="space-y-4 md:space-y-6">
+             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5 bg-slate-900/50 p-3 md:p-4 rounded-2xl border border-slate-700">
+               <div className="flex items-center gap-2.5">
+                 <Users size={18} className="text-blue-400 shrink-0" />
+                 <h3 className="text-xs md:text-sm font-black text-white uppercase tracking-tighter">سجل الموظفين</h3>
                </div>
-               <div className="flex gap-2">
-                  <button onClick={() => { downloadTemplate('users'); logAction('تحميل نموذج', 'نموذج استيراد الموظفين'); }} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-[10px] font-black"><Download size={14}/> نموذج استيراد</button>
-                  <button onClick={() => userFileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-xl text-[10px] font-black"><FileSpreadsheet size={14}/> استيراد موظفين</button>
-                  <button onClick={() => { onRefresh(); logAction('تحديث البيانات', 'مزامنة بيانات الموظفين مع السحابة'); }} className="flex items-center gap-2 px-4 py-2 bg-blue-600/10 text-blue-400 border border-blue-900/30 rounded-xl text-[10px] font-black"><RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} /> تحديث</button>
-                  <button onClick={() => pushToCloud('users')} disabled={isPushing} className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 rounded-xl text-[10px] font-black shadow-lg transition-all">
-                    {isPushing ? <RotateCcw size={14} className="animate-spin" /> : <CloudUpload size={14} />} حفظ في السحابة
-                  </button>
+               <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+                  <button onClick={() => { downloadTemplate('users'); logAction('تحميل نموذج', 'نموذج استيراد الموظفين'); }} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-[10px] font-black transition-all"><Download size={13}/> نموذج استيراد</button>
+                  <button onClick={() => userFileInputRef.current?.click()} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded-lg text-[10px] font-black transition-all"><FileSpreadsheet size={13}/> استيراد موظفين</button>
                </div>
              </div>
              <div className="overflow-x-auto">
@@ -591,44 +587,48 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
          )}
          {activeTab === 'branches' && (
-           <div className="space-y-6">
-             <div className="flex justify-between items-center bg-slate-900/50 p-4 rounded-2xl border border-slate-700">
-               <div className="flex items-center gap-3">
-                 <MapPin size={20} className="text-blue-400" />
-                 <h3 className="text-sm font-black text-white uppercase tracking-tighter">إدارة الفروع والمواقع</h3>
+           <div className="space-y-4 md:space-y-6">
+             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5 bg-slate-900/50 p-3 md:p-4 rounded-2xl border border-slate-700">
+               <div className="flex items-center gap-2.5">
+                 <MapPin size={18} className="text-blue-400 shrink-0" />
+                 <h3 className="text-xs md:text-sm font-black text-white uppercase tracking-tighter">إدارة الفروع والمواقع</h3>
                </div>
-               <div className="flex gap-2">
-                 <button onClick={() => { downloadTemplate('branches'); logAction('تحميل نموذج', 'نموذج استيراد الفروع'); }} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-[10px] font-black"><Download size={14}/> نموذج استيراد</button>
-                 <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-xl text-[10px] font-black"><FileSpreadsheet size={14}/> استيراد فروع</button>
-                 <button onClick={() => pushToCloud('branches')} disabled={isPushing} className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 rounded-xl text-[10px] font-black shadow-lg transition-all">
-                   {isPushing ? <RotateCcw size={14} className="animate-spin" /> : <CloudUpload size={14} />} حفظ في السحابة
+               <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+                 <button onClick={() => { downloadTemplate('branches'); logAction('تحميل نموذج', 'نموذج استيراد الفروع'); }} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-[10px] font-black transition-all"><Download size={13}/> نموذج استيراد</button>
+                 <button onClick={() => fileInputRef.current?.click()} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded-lg text-[10px] font-black transition-all"><FileSpreadsheet size={13}/> استيراد فروع</button>
+               </div>
+             </div>
+             
+             <div className="bg-slate-900/50 p-3.5 md:p-5 rounded-2xl border border-slate-700 space-y-3">
+               <div className="text-xs font-black text-slate-300 flex items-center gap-1.5">
+                 <Plus size={15} className="text-blue-400" /> إضافة فرع جديد
+               </div>
+               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+                 <input type="text" placeholder="اسم الفرع" className="bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-xl px-3 py-2 text-xs outline-none text-white col-span-2 sm:col-span-1" value={newBranch.name} onChange={e => setNewBranch({...newBranch, name: e.target.value})} />
+                 <input type="number" step="0.000001" placeholder="Lat (العرض)" className="bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-mono outline-none text-white col-span-1" value={newBranch.latitude || ''} onChange={e => setNewBranch({...newBranch, latitude: parseFloat(e.target.value)})} />
+                 <input type="number" step="0.000001" placeholder="Lng (الطول)" className="bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-mono outline-none text-white col-span-1" value={newBranch.longitude || ''} onChange={e => setNewBranch({...newBranch, longitude: parseFloat(e.target.value)})} />
+                 <input type="number" placeholder="النطاق (متر)" className="bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-xl px-3 py-2 text-xs outline-none text-white col-span-1" value={newBranch.radius || ''} onChange={e => setNewBranch({...newBranch, radius: parseInt(e.target.value)})} />
+                 <button onClick={() => {
+                   if (newBranch.name) {
+                     setBranches([...branches, { ...newBranch, id: Math.random().toString(36).substr(2, 9), radius: newBranch.radius || 100 } as Branch]);
+                     logAction('إضافة فرع جديد', `الفرع: ${newBranch.name}`);
+                     setNewBranch({ name: '', latitude: 0, longitude: 0, radius: 100 });
+                   }
+                 }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black py-2 px-4 text-xs flex items-center justify-center gap-1.5 transition-all col-span-2 sm:col-span-1 shadow-md">
+                   <Plus size={16}/> إضافة فرع
                  </button>
                </div>
              </div>
+
              <div className="flex justify-between items-center">
                 <h4 className="text-sm font-black text-blue-400 uppercase tracking-widest flex items-center gap-2">الفروع الحالية</h4>
                 <div className="flex gap-2">
                    {selectedBranches.size > 0 && (
-                      <button onClick={deleteSelectedBranches} className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-[10px] font-black animate-pulse">
-                         <Trash2 size={14}/> حذف المحدد ({selectedBranches.size})
+                      <button onClick={deleteSelectedBranches} className="flex items-center gap-2 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-xl text-[10px] font-black animate-pulse">
+                         <Trash2 size={13}/> حذف المحدد ({selectedBranches.size})
                       </button>
                    )}
                 </div>
-             </div>
-             <div className="bg-slate-900/50 p-4 md:p-6 rounded-3xl border border-slate-700 grid grid-cols-1 md:grid-cols-5 gap-4">
-                <input type="text" placeholder="الاسم" className={inputClasses} value={newBranch.name} onChange={e => setNewBranch({...newBranch, name: e.target.value})} />
-                <input type="number" placeholder="Lat" className={inputClasses} value={newBranch.latitude || ''} onChange={e => setNewBranch({...newBranch, latitude: parseFloat(e.target.value)})} />
-                <input type="number" placeholder="Lng" className={inputClasses} value={newBranch.longitude || ''} onChange={e => setNewBranch({...newBranch, longitude: parseFloat(e.target.value)})} />
-                <input type="number" placeholder="المسافة" className={inputClasses} value={newBranch.radius || ''} onChange={e => setNewBranch({...newBranch, radius: parseInt(e.target.value)})} />
-                <button onClick={() => {
-                  if (newBranch.name) {
-                    setBranches([...branches, { ...newBranch, id: Math.random().toString(36).substr(2, 9), radius: newBranch.radius || 100 } as Branch]);
-                    logAction('إضافة فرع جديد', `الفرع: ${newBranch.name}`);
-                    setNewBranch({ name: '', latitude: 0, longitude: 0, radius: 100 });
-                  }
-                }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black py-3 flex items-center justify-center gap-2 transition-all">
-                  <Plus size={18}/> إضافة
-                </button>
              </div>
              <div className="overflow-x-auto">
                <table className="w-full text-right md:min-w-[700px]">
@@ -694,103 +694,159 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
          )}
          {activeTab === 'jobs' && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center bg-slate-900/50 p-4 rounded-2xl border border-slate-700">
-              <div className="flex items-center gap-3">
-                <Briefcase size={20} className="text-blue-400" />
-                <h3 className="text-sm font-black text-white uppercase tracking-tighter">المسميات الوظيفية</h3>
+          <div className="space-y-4 md:space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5 bg-slate-900/50 p-3 md:p-4 rounded-2xl border border-slate-700">
+              <div className="flex items-center gap-2.5">
+                <Briefcase size={18} className="text-blue-400 shrink-0" />
+                <h3 className="text-xs md:text-sm font-black text-white uppercase tracking-tighter">المسميات الوظيفية</h3>
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => { downloadTemplate('jobs'); logAction('تحميل نموذج', 'نموذج استيراد الوظائف'); }} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-[10px] font-black"><Download size={14}/> نموذج استيراد</button>
-                <button onClick={() => jobFileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-xl text-[10px] font-black"><FileSpreadsheet size={14}/> استيراد وظائف</button>
-                <button onClick={() => pushToCloud('jobs')} disabled={isPushing} className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 rounded-xl text-[10px] font-black shadow-lg transition-all">
-                  {isPushing ? <RotateCcw size={14} className="animate-spin" /> : <CloudUpload size={14} />} حفظ في السحابة
-                </button>
+              <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+                <button onClick={() => { downloadTemplate('jobs'); logAction('تحميل نموذج', 'نموذج استيراد الوظائف'); }} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-[10px] font-black transition-all"><Download size={13}/> نموذج استيراد</button>
+                <button onClick={() => jobFileInputRef.current?.click()} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded-lg text-[10px] font-black transition-all"><FileSpreadsheet size={13}/> استيراد وظائف</button>
               </div>
             </div>
+
+            <div className="bg-slate-900/50 p-3.5 md:p-5 rounded-2xl border border-slate-700 space-y-3">
+               <div className="text-xs font-black text-slate-300 flex items-center gap-1.5">
+                 <Plus size={15} className="text-blue-400" /> إضافة وظيفة جديدة
+               </div>
+               <div className="flex flex-col sm:flex-row gap-2">
+                  <input type="text" placeholder="عنوان الوظيفة الجديد" className="bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-xl px-3 py-2 text-xs outline-none text-white flex-1 min-w-0" value={newJobTitle} onChange={e => setNewJobTitle(e.target.value)} />
+                  <button onClick={() => { if(newJobTitle.trim()) { setJobs([...jobs, { id: Math.random().toString(36).substr(2, 9), title: newJobTitle, workingDays: [0, 1, 2, 3, 4, 6] }]); logAction('إضافة وظيفة جديدة', `الوظيفة: ${newJobTitle}`); setNewJobTitle(''); } }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-4 py-2 text-xs font-black flex items-center justify-center gap-1.5 transition-all shrink-0 shadow-md"><Plus size={16}/> إضافة وظيفة</button>
+               </div>
+            </div>
+
             <div className="flex justify-between items-center">
-               <h4 className="text-sm font-black text-blue-400 uppercase tracking-widest">الوظائف المتاحة</h4>
+               <h4 className="text-sm font-black text-blue-400 uppercase tracking-widest flex items-center gap-2">الوظائف المتاحة ({jobs.length})</h4>
             </div>
-            <div className="flex gap-4 bg-slate-900/50 p-4 md:p-6 rounded-3xl border border-slate-700">
-               <input type="text" placeholder="عنوان الوظيفة" className={inputClasses} value={newJobTitle} onChange={e => setNewJobTitle(e.target.value)} />
-               <button onClick={() => { if(newJobTitle.trim()) { setJobs([...jobs, { id: Math.random().toString(36).substr(2, 9), title: newJobTitle, workingDays: [0, 1, 2, 3, 4, 6] }]); logAction('إضافة وظيفة جديدة', `الوظيفة: ${newJobTitle}`); setNewJobTitle(''); } }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-5 md:px-8 font-black flex items-center gap-2 transition-all"><Plus size={20}/> إضافة</button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-               {jobs.map(j => {
-                 const DAYS = [{id:0, label:'ح'}, {id:1, label:'ن'}, {id:2, label:'ث'}, {id:3, label:'ر'}, {id:4, label:'خ'}, {id:5, label:'ج'}, {id:6, label:'س'}];
-                 const toggleJobDay = (jobId: string, dayId: number) => {
-                   setJobs(jobs.map(job => {
-                     if (job.id === jobId) {
-                       const currentDays = job.workingDays || [0, 1, 2, 3, 4, 6];
-                       const newDays = currentDays.includes(dayId) ? currentDays.filter(d => d !== dayId) : [...currentDays, dayId];
-                        logAction('تعديل أيام عمل الوظيفة', `الوظيفة: ${job.title}, اليوم: ${DAYS.find(d => d.id === dayId)?.label}`);
-                        return { ...job, workingDays: newDays };
-                     }
-                     return job;
-                   }));
-                 };
-                 return (
-                 <div key={j.id} className="p-4 bg-slate-900 rounded-2xl border border-slate-700 flex flex-col gap-3 hover:border-blue-500 transition-all">
-                   <div className="flex justify-between items-center">
-                     <span className="text-xs font-bold">{j.title}</span>
-                     <div className="flex items-center gap-2">
-                        <button 
-                          onClick={() => {
-                            setJobs(jobs.map(job => job.id === j.id ? { ...job, canVisitMultipleBranches: !job.canVisitMultipleBranches } : job));
-                            logAction('تعديل صلاحية التنقل', `الوظيفة: ${j.title}`);
-                          }}
-                          className={`p-1.5 rounded-lg transition-all ${j.canVisitMultipleBranches ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-500'}`}
-                          title="السماح بزيارة فروع متعددة"
-                        >
-                          <Navigation size={14} />
-                        </button>
-                        <button onClick={() => { if(confirm('حذف الوظيفة؟')) { setJobs(jobs.filter(x => x.id !== j.id)); logAction('حذف وظيفة', `الوظيفة: ${j.title}`); } }} className="text-slate-600 hover:text-red-500"><Trash2 size={14}/></button>
-                      </div>
-                   </div>
-                   <div className="flex justify-between gap-1 mt-1 border-t border-slate-700/50 pt-3">
-                     {DAYS.map(d => {
-                       const isSelected = (j.workingDays || [0, 1, 2, 3, 4, 6]).includes(d.id);
-                       return (
-                         <button key={d.id} onClick={() => toggleJobDay(j.id, d.id)} className={`w-7 h-7 rounded-lg text-[10px] font-black transition-all ${isSelected ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-800 text-slate-500 border border-slate-700 hover:bg-slate-700'}`}>{d.label}</button>
-                       );
-                     })}
-                   </div>
-                 </div>
-               )})}
+
+            <div className="overflow-x-auto bg-slate-900/50 rounded-2xl border border-slate-700">
+              <table className="w-full text-right md:min-w-[700px]">
+                <thead>
+                  <tr className="border-b border-slate-700 text-[10px] sm:text-xs font-black text-slate-500 uppercase tracking-widest text-center">
+                    <th className="py-4 px-3 md:px-4 text-right">المسمى الوظيفي</th>
+                    <th className="py-4 px-3 md:px-4 text-center">صلاحية التنقل</th>
+                    <th className="py-4 px-3 md:px-4 text-center">أيام العمل الأسبوعية</th>
+                    <th className="py-4 px-3 md:px-4 text-center w-20">إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {jobs.map(j => {
+                    const DAYS = [
+                      { id: 0, label: 'ح' },
+                      { id: 1, label: 'ن' },
+                      { id: 2, label: 'ث' },
+                      { id: 3, label: 'ر' },
+                      { id: 4, label: 'خ' },
+                      { id: 5, label: 'ج' },
+                      { id: 6, label: 'س' }
+                    ];
+                    const toggleJobDay = (jobId: string, dayId: number) => {
+                      setJobs(jobs.map(job => {
+                        if (job.id === jobId) {
+                          const currentDays = job.workingDays || [0, 1, 2, 3, 4, 6];
+                          const newDays = currentDays.includes(dayId) ? currentDays.filter(d => d !== dayId) : [...currentDays, dayId];
+                          logAction('تعديل أيام عمل الوظيفة', `الوظيفة: ${job.title}, اليوم: ${DAYS.find(d => d.id === dayId)?.label}`);
+                          return { ...job, workingDays: newDays };
+                        }
+                        return job;
+                      }));
+                    };
+
+                    return (
+                      <tr key={j.id} className="border-b border-slate-700/50 hover:bg-slate-900/30 transition-all text-center">
+                        <td data-label="المسمى الوظيفي" className="py-4 px-3 md:px-4 text-right">
+                          <span className="font-bold text-xs sm:text-sm text-white">{j.title}</span>
+                        </td>
+                        <td data-label="صلاحية التنقل" className="py-4 px-3 md:px-4 text-center">
+                          <button
+                            onClick={() => {
+                              setJobs(jobs.map(job => job.id === j.id ? { ...job, canVisitMultipleBranches: !job.canVisitMultipleBranches } : job));
+                              logAction('تعديل صلاحية التنقل', `الوظيفة: ${j.title}`);
+                            }}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                              j.canVisitMultipleBranches
+                                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                                : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-slate-200'
+                            }`}
+                            title="اضغط لتغيير الصلاحية"
+                          >
+                            <Navigation size={13} className="shrink-0" />
+                            <span>{j.canVisitMultipleBranches ? 'مسموح بزيارة فروع متعددة' : 'فرع واحد فقط'}</span>
+                          </button>
+                        </td>
+                        <td data-label="أيام العمل الأسبوعية" className="py-4 px-3 md:px-4 text-center">
+                          <div className="flex items-center justify-center gap-1 sm:gap-1.5">
+                            {DAYS.map(d => {
+                              const isSelected = (j.workingDays || [0, 1, 2, 3, 4, 6]).includes(d.id);
+                              return (
+                                <button
+                                  key={d.id}
+                                  onClick={() => toggleJobDay(j.id, d.id)}
+                                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg text-xs font-black transition-all flex items-center justify-center cursor-pointer ${
+                                    isSelected
+                                      ? 'bg-blue-600 text-white shadow-xs'
+                                      : 'bg-slate-800 text-slate-500 border border-slate-700/60 hover:bg-slate-700 hover:text-slate-300'
+                                  }`}
+                                  title={`يوم ${d.label}`}
+                                >
+                                  {d.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </td>
+                        <td data-label="إجراءات" className="py-4 px-3 md:px-4 text-center">
+                          <button
+                            onClick={() => {
+                              if (confirm('حذف الوظيفة؟')) {
+                                setJobs(jobs.filter(x => x.id !== j.id));
+                                logAction('حذف وظيفة', `الوظيفة: ${j.title}`);
+                              }
+                            }}
+                            className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all cursor-pointer"
+                            title="حذف الوظيفة"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
         {activeTab === 'plans' && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center bg-slate-900/50 p-4 rounded-2xl border border-slate-700">
-              <div className="flex items-center gap-3">
-                <Navigation size={20} className="text-blue-400" />
-                <h3 className="text-sm font-black text-white uppercase tracking-tighter">خطط زيارات الفروع</h3>
+          <div className="space-y-4 md:space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5 bg-slate-900/50 p-3 md:p-4 rounded-2xl border border-slate-700">
+              <div className="flex items-center gap-2.5">
+                <Navigation size={18} className="text-blue-400 shrink-0" />
+                <h3 className="text-xs md:text-sm font-black text-white uppercase tracking-tighter">خطط زيارات الفروع</h3>
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => { downloadTemplate('plans'); logAction('تحميل نموذج', 'نموذج استيراد خطط الزيارات'); }} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-[10px] font-black"><Download size={14}/> نموذج استيراد</button>
-                <button onClick={() => planFileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-xl text-[10px] font-black"><FileSpreadsheet size={14}/> استيراد الخطط</button>
-                <button onClick={() => { setVisitPlans([]); logAction('مسح جميع الخطط', 'تم مسح كافة خطط الزيارات'); }} className="flex items-center gap-2 px-4 py-2 bg-red-600/10 text-red-400 border border-red-900/30 rounded-xl text-[10px] font-black"><Trash2 size={14}/> مسح الكل</button>
-                <button onClick={() => pushToCloud('visitPlans')} disabled={isPushing} className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 rounded-xl text-[10px] font-black shadow-lg transition-all">
-                  {isPushing ? <RotateCcw size={14} className="animate-spin" /> : <CloudUpload size={14} />} حفظ في السحابة
-                </button>
+              <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+                <button onClick={() => { downloadTemplate('plans'); logAction('تحميل نموذج', 'نموذج استيراد خطط الزيارات'); }} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-[10px] font-black transition-all"><Download size={13}/> نموذج استيراد</button>
+                <button onClick={() => planFileInputRef.current?.click()} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded-lg text-[10px] font-black transition-all"><FileSpreadsheet size={13}/> استيراد الخطط</button>
+                <button onClick={() => { setVisitPlans([]); logAction('مسح جميع الخطط', 'تم مسح كافة خطط الزيارات'); }} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-red-600/10 text-red-400 border border-red-900/30 rounded-lg text-[10px] font-black transition-all"><Trash2 size={13}/> مسح الكل</button>
               </div>
             </div>
-            <div className="bg-slate-900/50 p-4 md:p-6 rounded-3xl border border-slate-700 space-y-4">
-               <h4 className="text-xs font-black text-blue-400 uppercase tracking-widest flex items-center gap-2">إضافة زيارة يدوية</h4>
-               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <select className={inputClasses} value={newPlanUserId} onChange={e => setNewPlanUserId(e.target.value)}>
+
+            <div className="bg-slate-900/50 p-3.5 md:p-4 rounded-2xl border border-slate-700 space-y-2.5">
+               <h4 className="text-xs font-black text-blue-400 uppercase tracking-widest flex items-center gap-1.5"><Plus size={15}/> إضافة زيارة يدوية</h4>
+               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                  <select className="bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-xl px-3 py-2 text-xs outline-none text-white" value={newPlanUserId} onChange={e => setNewPlanUserId(e.target.value)}>
                     <option value="">اختر الموظف</option>
                     {allUsers.filter(u => u.role !== 'admin').map(u => <option key={u.id} value={u.id}>{u.fullName} ({u.serialNumber})</option>)}
                   </select>
-                  <select className={inputClasses} value={newPlanBranchId} onChange={e => setNewPlanBranchId(e.target.value)}>
+                  <select className="bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-xl px-3 py-2 text-xs outline-none text-white" value={newPlanBranchId} onChange={e => setNewPlanBranchId(e.target.value)}>
                     <option value="">اختر الفرع</option>
                     <option value="holiday">إجازة (Holiday)</option>
                     {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
-                  <input type="date" className={inputClasses} value={newPlanDate} onChange={e => setNewPlanDate(e.target.value)} />
-                  <button onClick={addManualPlan} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black py-3 flex items-center justify-center gap-2 transition-all">
-                    <Plus size={18}/> إضافة زيارة
+                  <input type="date" className="bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-xl px-3 py-2 text-xs outline-none text-white font-mono" value={newPlanDate} onChange={e => setNewPlanDate(e.target.value)} />
+                  <button onClick={addManualPlan} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black py-2 px-4 text-xs flex items-center justify-center gap-1.5 transition-all shadow-md">
+                    <Plus size={16}/> إضافة زيارة
                   </button>
                </div>
             </div>
@@ -882,24 +938,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
         {activeTab === 'holidays' && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center bg-slate-900/50 p-4 rounded-2xl border border-slate-700">
-              <div className="flex items-center gap-3">
-                <Calendar size={20} className="text-blue-400" />
-                <h3 className="text-sm font-black text-white uppercase tracking-tighter">إجازات الموظفين</h3>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => pushToCloud('holidays')} disabled={isPushing} className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 rounded-xl text-[10px] font-black shadow-lg transition-all">
-                  {isPushing ? <RotateCcw size={14} className="animate-spin" /> : <CloudUpload size={14} />} حفظ في السحابة
-                </button>
-              </div>
+          <div className="space-y-4 md:space-y-6">
+            <div className="bg-slate-900/50 p-3 md:p-4 rounded-2xl border border-slate-700 flex items-center gap-2.5">
+              <Calendar size={18} className="text-blue-400 shrink-0" />
+              <h3 className="text-xs md:text-sm font-black text-white uppercase tracking-tighter">إجازات الموظفين</h3>
             </div>
+
+            <div className="bg-slate-900/50 p-3.5 md:p-4 rounded-2xl border border-slate-700 flex gap-2">
+               <input type="date" className="bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-xl px-3 py-2 text-xs outline-none text-white font-mono flex-1" value={newHoliday} onChange={e => setNewHoliday(e.target.value)} />
+               <button onClick={() => { if(newHoliday && !config.holidays?.includes(newHoliday)) { const newConfig = {...config, holidays: [...(config.holidays||[]), newHoliday]}; setConfig(newConfig); const { adminPassword, ...configToSave } = newConfig; localStorage.setItem('attendance_config', JSON.stringify(configToSave)); logAction('إضافة إجازة رسمية', `التاريخ: ${newHoliday}`); setNewHoliday(''); } }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-4 py-2 text-xs font-black flex items-center gap-1.5 transition-all shrink-0"><Plus size={16}/> إضافة إجازة</button>
+            </div>
+
             <div className="flex justify-between items-center">
-               <h4 className="text-sm font-black text-blue-400 uppercase tracking-widest flex items-center gap-2"><Calendar size={18}/> الإجازات الرسمية</h4>
-            </div>
-            <div className="flex gap-4 bg-slate-900/50 p-4 md:p-6 rounded-3xl border border-slate-700">
-               <input type="date" className={inputClasses} value={newHoliday} onChange={e => setNewHoliday(e.target.value)} />
-               <button onClick={() => { if(newHoliday && !config.holidays?.includes(newHoliday)) { const newConfig = {...config, holidays: [...(config.holidays||[]), newHoliday]}; setConfig(newConfig); const { adminPassword, ...configToSave } = newConfig; localStorage.setItem('attendance_config', JSON.stringify(configToSave)); logAction('إضافة إجازة رسمية', `التاريخ: ${newHoliday}`); setNewHoliday(''); } }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-5 md:px-8 font-black flex items-center gap-2 transition-all shrink-0"><Plus size={20}/> إضافة إجازة</button>
+               <h4 className="text-xs font-black text-blue-400 uppercase tracking-widest flex items-center gap-1.5"><Calendar size={16}/> الإجازات الرسمية المسجلة ({(config.holidays || []).length})</h4>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                {(config.holidays || []).sort().map(h => (
@@ -912,21 +963,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
         {activeTab === 'report-access' && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center bg-slate-900/50 p-4 rounded-2xl border border-slate-700">
-              <div className="flex items-center gap-3">
-                <Key size={20} className="text-blue-400" />
-                <h3 className="text-sm font-black text-white uppercase tracking-tighter">حسابات متابعة التقارير</h3>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => pushToCloud('reportAccounts')} disabled={isPushing} className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 rounded-xl text-[10px] font-black shadow-lg transition-all">
-                  {isPushing ? <RotateCcw size={14} className="animate-spin" /> : <CloudUpload size={14} />} حفظ في السحابة
-                </button>
-              </div>
+          <div className="space-y-4 md:space-y-6">
+            <div className="bg-slate-900/50 p-3 md:p-4 rounded-2xl border border-slate-700 flex items-center gap-2.5">
+              <Key size={18} className="text-blue-400 shrink-0" />
+              <h3 className="text-xs md:text-sm font-black text-white uppercase tracking-tighter">حسابات متابعة التقارير</h3>
             </div>
-            <h4 className="text-sm font-black text-blue-400 flex items-center gap-2 uppercase tracking-widest"><Key size={20}/> حسابات متابعي التقارير</h4>
-            <div className="bg-slate-900/50 p-4 md:p-6 rounded-3xl border border-slate-700 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><input type="text" placeholder="اسم المستخدم" className={inputClasses} value={newRepUser} onChange={e => setNewRepUser(e.target.value)} /><input type="password" placeholder="كلمة المرور" className={inputClasses} value={newRepPass} onChange={e => setNewRepPass(e.target.value)} /></div>
+
+            <div className="bg-slate-900/50 p-3.5 md:p-5 rounded-2xl border border-slate-700 space-y-3">
+              <h4 className="text-xs font-black text-blue-400 flex items-center gap-1.5 uppercase tracking-widest"><Key size={16}/> إنشاء حساب جديد لمتابعة التقارير</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input type="text" placeholder="اسم المستخدم" className="bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-xl px-3 py-2 text-xs outline-none text-white" value={newRepUser} onChange={e => setNewRepUser(e.target.value)} />
+                <input type="password" placeholder="كلمة المرور" className="bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-xl px-3 py-2 text-xs outline-none text-white" value={newRepPass} onChange={e => setNewRepPass(e.target.value)} />
+              </div>
               
               <div className="space-y-2">
                 <div className="flex justify-between items-center mr-2">
@@ -1074,17 +1122,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
         {activeTab === 'settings' && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center bg-slate-900/50 p-4 rounded-2xl border border-slate-700">
-              <div className="flex items-center gap-3">
-                <Monitor size={20} className="text-blue-400" />
-                <h3 className="text-sm font-black text-white uppercase tracking-tighter">إعدادات النظام</h3>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => pushToCloud()} disabled={isPushing} className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 rounded-xl text-[10px] font-black shadow-lg transition-all">
-                  {isPushing ? <RotateCcw size={14} className="animate-spin" /> : <CloudUpload size={14} />} حفظ الكل في السحابة
-                </button>
-              </div>
+          <div className="space-y-4 md:space-y-6">
+            <div className="bg-slate-900/50 p-3 md:p-4 rounded-2xl border border-slate-700 flex items-center gap-2.5">
+              <Monitor size={18} className="text-blue-400 shrink-0" />
+              <h3 className="text-xs md:text-sm font-black text-white uppercase tracking-tighter">إعدادات النظام</h3>
             </div>
             <h4 className="text-sm font-black text-blue-400 flex items-center gap-2 uppercase tracking-widest"><Monitor size={20}/> إعدادات النظام المتقدمة</h4>
             <div className="bg-slate-900/50 p-4 md:p-6 rounded-3xl border border-slate-700 space-y-6">
