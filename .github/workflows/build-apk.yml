@@ -151,15 +151,38 @@ jobs:
       # ---- حقن الجسر الأصلي: ANDROID_ID + وضع المطور + الموقع الوهمي ----
       - name: Inject native bridge (Java)
         run: |
-          TARGET="android/app/src/main/java/com/uniteam/attendance"
+          # مسار الحزمة يُشتقّ من appId ولا يُكتب ثابتاً.
+          # كان مكتوباً ثابتاً كـ com/uniteam/attendance، فلمّا صار appId
+          # هو com.uniteam.attendance.v3 نسخ الملفات إلى حزمة لا يستدعيها أحد،
+          # وبقيت MainActivity الافتراضية من Capacitor هي العاملة — بلا جسر.
+          APP_ID=$(node -p "require('./capacitor.config.json').appId")
+          PKG_PATH=$(echo "$APP_ID" | tr '.' '/')
+          TARGET="android/app/src/main/java/$PKG_PATH"
+          echo "معرّف التطبيق: $APP_ID"
+          echo "مسار الحزمة  : $TARGET"
+
           mkdir -p "$TARGET"
-          cp native/android/AndroidBridge.java "$TARGET/AndroidBridge.java"
-          cp native/android/MainActivity.java  "$TARGET/MainActivity.java"
-          echo "ملفات Java بعد الحقن:"
+          for f in AndroidBridge MainActivity; do
+            sed "s|^package .*|package $APP_ID;|" "native/android/$f.java" > "$TARGET/$f.java"
+          done
+
+          # أي MainActivity افتراضية في حزمة أخرى تُحذف حتى لا تلتبس
+          find android/app/src/main/java -name MainActivity.java ! -path "$TARGET/*" -print -delete || true
+
+          echo "--- ملفات Java بعد الحقن ---"
           ls -1 "$TARGET"
-          echo "--- تأكيد وجود الواجهة ---"
-          grep -c "@JavascriptInterface" "$TARGET/AndroidBridge.java"
-          grep -n "addJavascriptInterface" "$TARGET/MainActivity.java"
+          head -1 "$TARGET/MainActivity.java"
+
+          # ---- تحقّق صارم: البناء يفشل إن لم يُسجَّل الجسر ----
+          test "$(head -1 "$TARGET/MainActivity.java")" = "package $APP_ID;" \
+            || { echo "::error::اسم الحزمة في MainActivity لا يطابق appId"; exit 1; }
+          grep -q "addJavascriptInterface" "$TARGET/MainActivity.java" \
+            || { echo "::error::MainActivity لا تسجّل AndroidBridge"; exit 1; }
+          grep -q "@JavascriptInterface" "$TARGET/AndroidBridge.java" \
+            || { echo "::error::AndroidBridge بلا دوال معرّضة لجافاسكربت"; exit 1; }
+          MANIFEST_ACTIVITY=$(grep -o 'android:name="[^"]*MainActivity"' android/app/src/main/AndroidManifest.xml | head -1)
+          echo "النشاط في المانيفست: $MANIFEST_ACTIVITY"
+          echo "عدد الدوال المعرّضة: $(grep -c '@JavascriptInterface' "$TARGET/AndroidBridge.java")"
 
       # ---- أيقونة التطبيق وشاشة البداية من resources/icon.png ----
       - name: Generate app icons
