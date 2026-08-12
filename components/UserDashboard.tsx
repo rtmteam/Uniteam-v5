@@ -665,7 +665,34 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
               </div>
             )}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 me-2">موقع التسجيل</label>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <label className="text-xs font-bold text-slate-400 me-2">موقع التسجيل</label>
+
+                {/* إشارة المسافة — بسيطة كإشارة «متصل» في الترويسة:
+                    نقطة خضراء داخل النطاق، صفراء خارجه، والرقم وحده بلا تفاصيل. */}
+                {(() => {
+                  const br = branches.find(b => b.id === selectedBranchId);
+                  if (!br) return null;
+                  if (!liveLocation) {
+                    return (
+                      <span className="ut-chip">
+                        <MapPin size={11} /> تحديد الموقع…
+                      </span>
+                    );
+                  }
+                  const dist = Math.round(calculateDistance(liveLocation.lat, liveLocation.lng, br.latitude, br.longitude));
+                  const inside = dist <= br.radius;
+                  return (
+                    <span
+                      className={`ut-chip ${inside ? 'ut-chip--ok' : 'ut-chip--warn'}`}
+                      title={inside ? `داخل نطاق ${br.name}` : `خارج نطاق ${br.name} — الحد المسموح ${br.radius} م`}
+                    >
+                      <span className="ut-pulse" />
+                      <span style={{ direction: 'ltr', fontWeight: 800 }}>{dist}</span> م
+                    </span>
+                  );
+                })()}
+              </div>
               <div className="relative">
                 <select value={selectedBranchId} onChange={e => setSelectedBranchId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 text-white px-6 py-4 rounded-2xl font-bold outline-none cursor-pointer appearance-none shadow-inner focus:border-blue-500 transition-all text-right">
                   <option value="">-- اختر الفرع للتسجيل --</option>
@@ -678,42 +705,6 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
                 <MapPin size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none" />
               </div>
 
-              {/* شارة المسافة بين الموظف والفرع */}
-              {(() => {
-                const br = branches.find(b => b.id === selectedBranchId);
-                if (!br) return null;
-                if (!liveLocation) {
-                  return (
-                    <div className="dist-chip dist-chip--wait">
-                      <MapPin size={17} />
-                      <span>جارٍ تحديد موقعك…</span>
-                    </div>
-                  );
-                }
-                const dist = Math.round(calculateDistance(liveLocation.lat, liveLocation.lng, br.latitude, br.longitude));
-                const inside = dist <= br.radius;
-                const pct = Math.min(100, Math.round((dist / Math.max(1, br.radius)) * 100));
-                return (
-                  <div className={`dist-chip ${inside ? 'dist-chip--in' : 'dist-chip--out'}`}>
-                    <MapPin size={18} style={{ flex: 'none' }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div className="flex items-center justify-between gap-2">
-                        <span>{inside ? 'أنت داخل نطاق الفرع' : 'أنت خارج نطاق الفرع'}</span>
-                        <span className="dist-chip__num">{dist} م</span>
-                      </div>
-                      <div className="dist-chip__bar">
-                        <div
-                          className="dist-chip__fill"
-                          style={{ width: `${pct}%`, background: inside ? 'var(--grad-ok)' : 'var(--grad-warn)' }}
-                        />
-                      </div>
-                      <div style={{ fontSize: 10.5, opacity: .8, marginTop: 5 }}>
-                        الحد المسموح {br.radius} م · دقة الإشارة {Math.round(liveLocation.accuracy)} م
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
             </div>
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 me-2 flex items-center gap-1"><FileText size={13} /> ملاحظات / سبب التأخير (إلزامي عند التأخير)</label>

@@ -428,18 +428,8 @@ body {
 /* ==========================================================================
    شارة المسافة عن الفرع
    ========================================================================== */
-.dist-chip {
-  display: flex; align-items: center; gap: 10px;
-  padding: 12px 14px; border-radius: var(--r);
-  border: 1px solid transparent;
-  font-size: 12.5px; font-weight: 600;
-}
-.dist-chip--in   { background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.3); color: #6EE7B7; }
-.dist-chip--out  { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.3); color: #FCD34D; }
-.dist-chip--wait { background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.1); color: var(--on-dark-2); }
-.dist-chip__num  { font-size: 17px; font-weight: 800; direction: ltr; }
-.dist-chip__bar  { height: 5px; border-radius: 99px; background: rgba(255,255,255,.1); overflow: hidden; margin-top: 6px; }
-.dist-chip__fill { height: 100%; border-radius: 99px; }
+/* المسافة بين الموظف والفرع تُعرض بإشارة ut-chip الصغيرة نفسها
+   المستعملة في الترويسة — لا شارة خاصة لها. */
 
 /* ==========================================================================
    لوحة الإدارة — الشريط لصق الحافة والمحتوى بكامل العرض
