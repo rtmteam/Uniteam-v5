@@ -470,7 +470,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                </div>
              </div>
              <div className="overflow-x-auto">
-               <table className="w-full text-right min-w-[1000px]">
+               <table className="w-full text-right md:min-w-[1000px]">
                  <thead>
                     <tr className="border-b border-slate-700 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">
                       <th className="py-4 px-2 text-right">الموظف والوظيفة</th>
@@ -490,7 +490,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                    return (
                    <tr key={user.id} className="border-b border-slate-700/50 hover:bg-slate-900/30 transition-all text-center">
-                     <td className="py-4 px-2 text-right">
+                     <td data-label="الموظف والوظيفة" className="py-4 px-2 text-right">
                         {editingUserId === user.id ? (
                           <div className="space-y-1">
                             <input className="bg-slate-900 border border-blue-500 rounded px-2 py-1 text-xs w-full text-white" value={editUserData.fullName || ''} onChange={e => setEditUserData({...editUserData, fullName: e.target.value})} />
@@ -505,12 +505,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                         )}
                      </td>
-                     <td className="py-4 px-2 text-slate-400 text-xs font-mono">
+                     <td data-label="الرقم القومي" className="py-4 px-2 text-slate-400 text-xs font-mono">
                         {editingUserId === user.id ? (
                           <input className="bg-slate-900 border border-blue-500 rounded px-2 py-1 text-xs w-full text-center text-white" value={editUserData.nationalId || ''} onChange={e => setEditUserData({...editUserData, nationalId: e.target.value})} />
                         ) : user.nationalId}
                      </td>
-                     <td className="py-4 px-2">
+                     <td data-label="الفرع الافتراضي" className="py-4 px-2">
                         {editingUserId === user.id ? (
                           <select className="bg-slate-900 border border-blue-500 rounded px-2 py-1 text-[10px] w-full text-white" value={editUserData.defaultBranchId || ''} onChange={e => setEditUserData({...editUserData, defaultBranchId: e.target.value})}>
                             {branches.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
@@ -519,21 +519,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <span className="text-xs text-slate-300 font-bold">{user.defaultBranchId || user.defaultBranch || user.assignedBranch || user.branch || 'غير محدد'}</span>
                         )}
                      </td>
-                     <td className="py-4 px-2">
+                     <td data-label="الحضور (Default)" className="py-4 px-2">
                         {editingUserId === user.id ? (
                           <input type="time" className="bg-slate-900 border border-blue-500 rounded px-2 py-1 text-xs w-full text-center text-white" value={editUserData.checkInTime || ''} onChange={e => setEditUserData({...editUserData, checkInTime: e.target.value})} />
                         ) : (
                           <div className="flex items-center justify-center gap-1 text-green-400 font-bold text-xs"><Clock size={12}/> {formatTimeDisplay(user.checkInTime || '09:00')}</div>
                         )}
                      </td>
-                     <td className="py-4 px-2">
+                     <td data-label="الانصراف (Default)" className="py-4 px-2">
                         {editingUserId === user.id ? (
                           <input type="time" className="bg-slate-900 border border-blue-500 rounded px-2 py-1 text-xs w-full text-center text-white" value={editUserData.checkOutTime || ''} onChange={e => setEditUserData({...editUserData, checkOutTime: e.target.value})} />
                         ) : (
                           <div className="flex items-center justify-center gap-1 text-orange-400 font-bold text-xs"><Clock size={12}/> {formatTimeDisplay(user.checkOutTime || '17:00')}</div>
                         )}
                      </td>
-                     <td className="py-4 px-2">
+                     <td data-label="الأجهزة المرتبطة" className="py-4 px-2">
                         {editingUserId === user.id ? (
                            <div className="flex items-center gap-1 justify-center">
                              <span className="text-[10px] text-slate-500">الحد:</span>
@@ -545,7 +545,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                            </div>
                         )}
                      </td>
-                     <td className="py-4 px-2">
+                     <td data-label="إجراءات" className="py-4 px-2">
                         <div className="flex justify-center gap-2">
                            {editingUserId === user.id ? (
                              <>
@@ -631,7 +631,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
              </div>
              <div className="overflow-x-auto">
-               <table className="w-full text-right min-w-[700px]">
+               <table className="w-full text-right md:min-w-[700px]">
                  <thead><tr className="border-b border-slate-700 text-[10px] font-black text-slate-500 uppercase tracking-widest">
                    <th className="py-4 px-2 w-10 text-center"><input type="checkbox" checked={selectedBranches.size === branches.length && branches.length > 0} onChange={toggleSelectAllBranches} className="accent-blue-600 cursor-pointer" /></th>
                    <th className="py-4 px-2 text-center w-28">الترتيب</th>
@@ -657,8 +657,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       onDragEnd={() => setDraggedBranchIndex(null)}
                       className={`border-b border-slate-700/50 hover:bg-slate-900/30 transition-colors ${draggedBranchIndex === idx ? 'opacity-40 bg-blue-900/20' : ''}`}
                     >
-                      <td className="py-4 px-2 text-center"><input type="checkbox" checked={selectedBranches.has(b.id)} onChange={() => toggleSelectBranch(b.id)} className="accent-blue-600 cursor-pointer" /></td>
-                      <td className="py-4 px-2 text-center">
+                      <td data-label="تحديد" className="py-4 px-2 text-center"><input type="checkbox" checked={selectedBranches.has(b.id)} onChange={() => toggleSelectBranch(b.id)} className="accent-blue-600 cursor-pointer" /></td>
+                      <td data-label="الترتيب" className="py-4 px-2 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <div 
                             title="اسحب لتغيير الترتيب" 
@@ -683,10 +683,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </select>
                         </div>
                       </td>
-                      <td className="py-4 px-2 font-black">{editingBranchId === b.id ? (<input className="bg-slate-900 border border-blue-500 rounded px-3 py-1.5 text-xs w-full outline-none text-white" value={editBranchData.name || ''} onChange={e => setEditBranchData({...editBranchData, name: e.target.value})} />) : (<span className="text-emerald-400">{b.name}</span>)}</td>
-                      <td className="py-4 px-2">{editingBranchId === b.id ? (<div className="flex gap-1"><input type="number" step="0.000001" className="bg-slate-900 border border-blue-500 rounded px-2 py-1.5 text-[10px] w-full font-mono outline-none text-white" placeholder="Lat" value={editBranchData.latitude || ''} onChange={e => setEditBranchData({...editBranchData, latitude: parseFloat(e.target.value)})} /><input type="number" step="0.000001" className="bg-slate-900 border border-blue-500 rounded px-2 py-1.5 text-[10px] w-full font-mono outline-none text-white" placeholder="Lng" value={editBranchData.longitude || ''} onChange={e => setEditBranchData({...editBranchData, longitude: parseFloat(e.target.value)})} /></div>) : (<span className="text-[10px] text-slate-400 font-mono">{b.latitude.toFixed(6)}, {b.longitude.toFixed(6)}</span>)}</td>
-                      <td className="py-4 px-2 text-center">{editingBranchId === b.id ? (<input type="number" className="bg-slate-900 border border-blue-500 rounded px-2 py-1.5 text-xs w-20 text-center outline-none text-white" value={editBranchData.radius || ''} onChange={e => setEditBranchData({...editBranchData, radius: parseInt(e.target.value)})} />) : (<span className="text-blue-400 font-black text-xs">{b.radius}م</span>)}</td>
-                      <td className="py-4 px-2 text-center"><div className="flex justify-center gap-2">{editingBranchId === b.id ? (<><button onClick={() => saveEditBranch(b.id)} className="text-green-500 hover:bg-green-500/10 p-2 rounded-lg transition-all"><Check size={18}/></button><button onClick={() => setEditingBranchId(null)} className="text-red-500 hover:bg-red-500/10 p-2 rounded-lg transition-all"><X size={18}/></button></>) : (<><button onClick={() => { setEditingBranchId(b.id); setEditBranchData(b); }} className="text-blue-400 hover:bg-blue-400/10 p-2 rounded-lg transition-all" title="تعديل"><Edit2 size={16}/></button><button onClick={() => { if(confirm('حذف الفرع؟')) { setBranches(branches.filter(x => x.id !== b.id)); logAction('حذف فرع', `الفرع: ${b.name}`); } }} className="text-slate-500 hover:text-red-400 hover:bg-red-400/10 p-2 rounded-lg transition-all" title="حذف"><Trash2 size={16}/></button></>)}</div></td>
+                      <td data-label="اسم الفرع" className="py-4 px-2 font-black">{editingBranchId === b.id ? (<input className="bg-slate-900 border border-blue-500 rounded px-3 py-1.5 text-xs w-full outline-none text-white" value={editBranchData.name || ''} onChange={e => setEditBranchData({...editBranchData, name: e.target.value})} />) : (<span className="text-emerald-400">{b.name}</span>)}</td>
+                      <td data-label="إحداثيات (Lat, Lng)" className="py-4 px-2">{editingBranchId === b.id ? (<div className="flex gap-1"><input type="number" step="0.000001" className="bg-slate-900 border border-blue-500 rounded px-2 py-1.5 text-[10px] w-full font-mono outline-none text-white" placeholder="Lat" value={editBranchData.latitude || ''} onChange={e => setEditBranchData({...editBranchData, latitude: parseFloat(e.target.value)})} /><input type="number" step="0.000001" className="bg-slate-900 border border-blue-500 rounded px-2 py-1.5 text-[10px] w-full font-mono outline-none text-white" placeholder="Lng" value={editBranchData.longitude || ''} onChange={e => setEditBranchData({...editBranchData, longitude: parseFloat(e.target.value)})} /></div>) : (<span className="text-[10px] text-slate-400 font-mono">{b.latitude.toFixed(6)}, {b.longitude.toFixed(6)}</span>)}</td>
+                      <td data-label="النطاق" className="py-4 px-2 text-center">{editingBranchId === b.id ? (<input type="number" className="bg-slate-900 border border-blue-500 rounded px-2 py-1.5 text-xs w-20 text-center outline-none text-white" value={editBranchData.radius || ''} onChange={e => setEditBranchData({...editBranchData, radius: parseInt(e.target.value)})} />) : (<span className="text-blue-400 font-black text-xs">{b.radius}م</span>)}</td>
+                      <td data-label="إجراءات" className="py-4 px-2 text-center"><div className="flex justify-center gap-2">{editingBranchId === b.id ? (<><button onClick={() => saveEditBranch(b.id)} className="text-green-500 hover:bg-green-500/10 p-2 rounded-lg transition-all"><Check size={18}/></button><button onClick={() => setEditingBranchId(null)} className="text-red-500 hover:bg-red-500/10 p-2 rounded-lg transition-all"><X size={18}/></button></>) : (<><button onClick={() => { setEditingBranchId(b.id); setEditBranchData(b); }} className="text-blue-400 hover:bg-blue-400/10 p-2 rounded-lg transition-all" title="تعديل"><Edit2 size={16}/></button><button onClick={() => { if(confirm('حذف الفرع؟')) { setBranches(branches.filter(x => x.id !== b.id)); logAction('حذف فرع', `الفرع: ${b.name}`); } }} className="text-slate-500 hover:text-red-400 hover:bg-red-400/10 p-2 rounded-lg transition-all" title="حذف"><Trash2 size={16}/></button></>)}</div></td>
                     </tr>
                   ))}</tbody>
                </table>
@@ -795,7 +795,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-right min-w-[800px]">
+              <table className="w-full text-right md:min-w-[800px]">
                 <thead>
                   <tr className="border-b border-slate-700 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">
                     <th className="py-4 px-2 text-right">الموظف</th>
@@ -813,7 +813,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                     return (
                       <tr key={plan.id} className="border-b border-slate-700/50 hover:bg-slate-900/30 transition-all text-center">
-                        <td className="py-4 px-2 text-right">
+                        <td data-label="الموظف" className="py-4 px-2 text-right">
                           {isEditing ? (
                             <select 
                               className={inputClasses} 
@@ -829,10 +829,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </div>
                           )}
                         </td>
-                        <td className="py-4 px-2">
+                        <td data-label="الرقم التسلسلي" className="py-4 px-2">
                           <span className="text-xs text-slate-400 font-mono">{user?.serialNumber || plan.userSerial || 'N/A'}</span>
                         </td>
-                        <td className="py-4 px-2">
+                        <td data-label="الفرع المستهدف" className="py-4 px-2">
                           {isEditing ? (
                             <select 
                               className={inputClasses} 
@@ -848,7 +848,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </span>
                           )}
                         </td>
-                        <td className="py-4 px-2 text-slate-400 text-xs font-mono">
+                        <td data-label="التاريخ" className="py-4 px-2 text-slate-400 text-xs font-mono">
                           {isEditing ? (
                             <input 
                               type="date" 
@@ -858,7 +858,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             />
                           ) : plan.date}
                         </td>
-                        <td className="py-4 px-2">
+                        <td data-label="إجراءات" className="py-4 px-2">
                           <div className="flex items-center justify-center gap-1">
                             {isEditing ? (
                               <>
@@ -978,12 +978,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <tbody>
                   {reportAccounts.map(acc => (
                     <tr key={acc.id} className="border-b border-slate-700/50 hover:bg-slate-900/30 transition-all">
-                      <td className="py-4 px-2 font-bold text-sm text-white">
+                      <td data-label="اسم المستخدم" className="py-4 px-2 font-bold text-sm text-white">
                         {editingReportId === acc.id ? (
                           <input className="bg-slate-900 border border-blue-500 rounded px-2 py-1 text-xs w-full text-white" value={editReportData.username || ''} onChange={e => setEditReportData({...editReportData, username: e.target.value})} />
                         ) : acc.username}
                       </td>
-                      <td className="py-4 px-2 font-mono text-xs text-slate-400">
+                      <td data-label="كلمة المرور" className="py-4 px-2 font-mono text-xs text-slate-400">
                         {editingReportId === acc.id ? (
                           <input type="text" className="bg-slate-900 border border-blue-500 rounded px-2 py-1 text-xs w-full text-white" value={editReportData.password || ''} onChange={e => setEditReportData({...editReportData, password: e.target.value})} />
                         ) : (
@@ -995,7 +995,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                         )}
                       </td>
-                      <td className="py-4 px-2">
+                      <td data-label="الوظائف المسموح بها" className="py-4 px-2">
                         {editingReportId === acc.id ? (
                           <div className="space-y-2">
                             <div className="flex justify-between items-center px-1">
@@ -1023,7 +1023,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                         )}
                       </td>
-                      <td className="py-4 px-2">
+                      <td data-label="الموظفين المسموح بهم" className="py-4 px-2">
                         {editingReportId === acc.id ? (
                           <div className="space-y-2">
                             <div className="flex justify-between items-center px-1">
@@ -1051,7 +1051,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                         )}
                       </td>
-                      <td className="py-4 px-2 text-center">
+                      <td data-label="إجراءات" className="py-4 px-2 text-center">
                         <div className="flex justify-center gap-2">
                           {editingReportId === acc.id ? (
                             <>

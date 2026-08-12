@@ -311,6 +311,89 @@
 }
 
 /* ==========================================================================
+   جداول لوحة الإدارة على الهاتف — كل صفّ يصير بطاقة
+   ==========================================================================
+   الجداول تحمل عرضاً أدنى بين 700 و1000 بكسل. داخل حاوية تمرير أفقي على
+   شاشة 360px كان ثلثا البيانات خارج الشاشة، ولا شيء يدلّ على وجوب السحب.
+
+   هنا يختفي رأس الجدول ويتحوّل كل صفّ إلى بطاقة، وكل خلية إلى سطر:
+   العنوان يميناً والقيمة يساراً. العنوان يُقرأ من data-label الموضوع على
+   كل <td> في AdminDashboard.tsx، وهو مأخوذ حرفياً من <th> المقابل.
+   ========================================================================== */
+@media (max-width: 860px) {
+  .admin-main table,
+  .admin-main thead,
+  .admin-main tbody,
+  .admin-main tr,
+  .admin-main td { display: block; width: 100%; }
+
+  /* رأس الجدول لا معنى له بعد التكديس — العناوين انتقلت داخل الخلايا */
+  .admin-main thead { display: none; }
+
+  .admin-main table { min-width: 0; }
+
+  .admin-main tbody tr {
+    border: 1px solid rgba(255, 255, 255, .09);
+    border-radius: var(--r-lg);
+    background: rgba(255, 255, 255, .03);
+    margin-bottom: 10px;
+    padding: 4px 12px;
+    text-align: start;
+  }
+
+  .admin-main tbody td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 0 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, .06);
+    text-align: start;
+    min-height: 42px;
+  }
+  .admin-main tbody td:last-child { border-bottom: 0; }
+
+  .admin-main tbody td::before {
+    content: attr(data-label);
+    flex: none;
+    max-width: 45%;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--on-dark-2);
+    line-height: 1.35;
+  }
+  /* خلية بلا عنوان (خانة الاختيار مثلاً) لا تفتح فراغاً */
+  .admin-main tbody td:not([data-label])::before { display: none; }
+
+  /* القيمة تأخذ ما تبقّى وتلتصق بالجانب المقابل */
+  .admin-main tbody td > * { margin-inline-start: auto; }
+  .admin-main tbody td > .flex,
+  .admin-main tbody td > div { max-width: 62%; }
+
+  /* حاوية التمرير لم تعد لازمة، وبقاؤها يقصّ ظلال البطاقات */
+  .admin-main .overflow-x-auto { overflow-x: visible; }
+}
+
+/* ==========================================================================
+   المناطق الآمنة — شريط حالة الهاتف والنوتش
+   ==========================================================================
+   داخل تطبيق أندرويد يمتدّ المحتوى خلف شريط الحالة: إمّا بسبب
+   viewport-fit=cover، وإمّا لأن أندرويد 15 يفرض العرض من حافة إلى حافة
+   على ما يُبنى بـ SDK 35 فأعلى — والبناء هنا بـ SDK 36.
+
+   فتمتدّ خلفية الترويسة الكحلية خلف الشريط ويهبط محتواها تحته.
+   ========================================================================== */
+.ut-header { padding-top: env(safe-area-inset-top, 0px); }
+
+body {
+  padding-inline-start: env(safe-area-inset-left, 0px);
+  padding-inline-end:  env(safe-area-inset-right, 0px);
+}
+
+/* شريط تثبيت التطبيق ملتصق بالأسفل، فيحتاج مساحة شريط التنقّل */
+.ut-install { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+/* ==========================================================================
    الخط المميّز لاسم التطبيق
    ========================================================================== */
 .ut-brandfont {
