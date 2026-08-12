@@ -615,7 +615,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                    )}
                 </div>
              </div>
-             <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-700 grid grid-cols-1 md:grid-cols-5 gap-4">
+             <div className="bg-slate-900/50 p-4 md:p-6 rounded-3xl border border-slate-700 grid grid-cols-1 md:grid-cols-5 gap-4">
                 <input type="text" placeholder="الاسم" className={inputClasses} value={newBranch.name} onChange={e => setNewBranch({...newBranch, name: e.target.value})} />
                 <input type="number" placeholder="Lat" className={inputClasses} value={newBranch.latitude || ''} onChange={e => setNewBranch({...newBranch, latitude: parseFloat(e.target.value)})} />
                 <input type="number" placeholder="Lng" className={inputClasses} value={newBranch.longitude || ''} onChange={e => setNewBranch({...newBranch, longitude: parseFloat(e.target.value)})} />
@@ -711,9 +711,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="flex justify-between items-center">
                <h4 className="text-sm font-black text-blue-400 uppercase tracking-widest">الوظائف المتاحة</h4>
             </div>
-            <div className="flex gap-4 bg-slate-900/50 p-6 rounded-3xl border border-slate-700">
+            <div className="flex gap-4 bg-slate-900/50 p-4 md:p-6 rounded-3xl border border-slate-700">
                <input type="text" placeholder="عنوان الوظيفة" className={inputClasses} value={newJobTitle} onChange={e => setNewJobTitle(e.target.value)} />
-               <button onClick={() => { if(newJobTitle.trim()) { setJobs([...jobs, { id: Math.random().toString(36).substr(2, 9), title: newJobTitle, workingDays: [0, 1, 2, 3, 4, 6] }]); logAction('إضافة وظيفة جديدة', `الوظيفة: ${newJobTitle}`); setNewJobTitle(''); } }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-8 font-black flex items-center gap-2 transition-all"><Plus size={20}/> إضافة</button>
+               <button onClick={() => { if(newJobTitle.trim()) { setJobs([...jobs, { id: Math.random().toString(36).substr(2, 9), title: newJobTitle, workingDays: [0, 1, 2, 3, 4, 6] }]); logAction('إضافة وظيفة جديدة', `الوظيفة: ${newJobTitle}`); setNewJobTitle(''); } }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-5 md:px-8 font-black flex items-center gap-2 transition-all"><Plus size={20}/> إضافة</button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                {jobs.map(j => {
@@ -776,7 +776,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
               </div>
             </div>
-            <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-700 space-y-4">
+            <div className="bg-slate-900/50 p-4 md:p-6 rounded-3xl border border-slate-700 space-y-4">
                <h4 className="text-xs font-black text-blue-400 uppercase tracking-widest flex items-center gap-2">إضافة زيارة يدوية</h4>
                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <select className={inputClasses} value={newPlanUserId} onChange={e => setNewPlanUserId(e.target.value)}>
@@ -897,9 +897,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="flex justify-between items-center">
                <h4 className="text-sm font-black text-blue-400 uppercase tracking-widest flex items-center gap-2"><Calendar size={18}/> الإجازات الرسمية</h4>
             </div>
-            <div className="flex gap-4 bg-slate-900/50 p-6 rounded-3xl border border-slate-700">
+            <div className="flex gap-4 bg-slate-900/50 p-4 md:p-6 rounded-3xl border border-slate-700">
                <input type="date" className={inputClasses} value={newHoliday} onChange={e => setNewHoliday(e.target.value)} />
-               <button onClick={() => { if(newHoliday && !config.holidays?.includes(newHoliday)) { const newConfig = {...config, holidays: [...(config.holidays||[]), newHoliday]}; setConfig(newConfig); const { adminPassword, ...configToSave } = newConfig; localStorage.setItem('attendance_config', JSON.stringify(configToSave)); logAction('إضافة إجازة رسمية', `التاريخ: ${newHoliday}`); setNewHoliday(''); } }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-8 font-black flex items-center gap-2 transition-all shrink-0"><Plus size={20}/> إضافة إجازة</button>
+               <button onClick={() => { if(newHoliday && !config.holidays?.includes(newHoliday)) { const newConfig = {...config, holidays: [...(config.holidays||[]), newHoliday]}; setConfig(newConfig); const { adminPassword, ...configToSave } = newConfig; localStorage.setItem('attendance_config', JSON.stringify(configToSave)); logAction('إضافة إجازة رسمية', `التاريخ: ${newHoliday}`); setNewHoliday(''); } }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-5 md:px-8 font-black flex items-center gap-2 transition-all shrink-0"><Plus size={20}/> إضافة إجازة</button>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                {(config.holidays || []).sort().map(h => (
@@ -925,7 +925,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
             <h4 className="text-sm font-black text-blue-400 flex items-center gap-2 uppercase tracking-widest"><Key size={20}/> حسابات متابعي التقارير</h4>
-            <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-700 space-y-4">
+            <div className="bg-slate-900/50 p-4 md:p-6 rounded-3xl border border-slate-700 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><input type="text" placeholder="اسم المستخدم" className={inputClasses} value={newRepUser} onChange={e => setNewRepUser(e.target.value)} /><input type="password" placeholder="كلمة المرور" className={inputClasses} value={newRepPass} onChange={e => setNewRepPass(e.target.value)} /></div>
               
               <div className="space-y-2">
@@ -1087,7 +1087,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
             <h4 className="text-sm font-black text-blue-400 flex items-center gap-2 uppercase tracking-widest"><Monitor size={20}/> إعدادات النظام المتقدمة</h4>
-            <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-700 space-y-6">
+            <div className="bg-slate-900/50 p-4 md:p-6 rounded-3xl border border-slate-700 space-y-6">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-1">رابط ملف سجل المراقبة (Audit Log Sheet ID)</label>
                 <input 

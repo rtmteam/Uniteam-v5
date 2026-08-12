@@ -50,7 +50,7 @@ const MultiSelect = ({ label, options, selected, onToggle, placeholder, icon: Ic
             <input 
               type="text" 
               placeholder="بحث..." 
-              className="w-full bg-slate-900 border border-slate-700 text-white px-8 py-2 rounded-lg text-[10px] outline-none focus:border-blue-500"
+              className="w-full bg-slate-900 border border-slate-700 text-white px-5 md:px-8 py-2 rounded-lg text-[10px] outline-none focus:border-blue-500"
               value={search}
               onChange={e => setSearch(e.target.value)}
               autoFocus
@@ -760,7 +760,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
   if (!isLoggedIn) {
     return (
       <div className="flex items-center justify-center py-12 px-4">
-        <div className="bg-slate-800 rounded-3xl p-8 w-full max-w-md border border-slate-700 shadow-2xl">
+        <div className="bg-slate-800 rounded-3xl p-5 md:p-8 w-full max-w-md border border-slate-700 shadow-2xl">
           <div className="text-center mb-8">
             <div className="bg-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-900/20">
               <FileSpreadsheet size={32} className="text-white" />
@@ -808,7 +808,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-800 p-6 rounded-3xl border border-slate-700 shadow-xl">
+      <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-800 p-4 md:p-6 rounded-3xl border border-slate-700 shadow-xl">
         <div className="text-right w-full md:w-auto"><h2 className="text-xl font-black text-blue-400 flex items-center gap-2">{isAdminLogin ? <ShieldCheck size={24} className="text-orange-400" /> : <Table size={24} />} متابعة التقارير والوظائف {isAdminLogin && <span className="text-[10px] text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded-lg border border-orange-400/20 mr-2">Admin Mode</span>}</h2><p className="text-slate-500 text-[10px] font-black uppercase">المسؤول: {username}</p></div>
         <div className="flex flex-wrap gap-2 justify-center">
           <button type="button" onClick={() => fetchData(false)} disabled={isRefreshing} className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-blue-400 border border-slate-700 rounded-xl text-[10px] font-black hover:bg-slate-700 transition-all"><RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} /> تحديث البيانات</button>
@@ -827,7 +827,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
         </div>
       </div>
       
-      <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700 shadow-lg space-y-6">
+      <div className="bg-slate-800 p-4 md:p-6 rounded-3xl border border-slate-700 shadow-lg space-y-6">
         <div className="flex justify-between items-center border-b border-slate-700 pb-4">
           <h3 className="text-xs font-black text-white flex items-center gap-2 uppercase tracking-widest text-right"><Filter size={14} /> تصفية السجلات قبل التحميل</h3>
         </div>
@@ -876,7 +876,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
         const rows = buildSummary(true);
         if (!rows || rows.length === 0) {
           return (
-            <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700 shadow-lg text-center">
+            <div className="bg-slate-800 p-5 md:p-8 rounded-3xl border border-slate-700 shadow-lg text-center">
               <BarChart3 size={30} className="mx-auto text-slate-600 mb-3" />
               <div className="text-white text-sm font-black mb-1">لوحة الالتزام</div>
               <div className="text-slate-500 text-[11px] font-bold">
@@ -926,7 +926,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
           <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-lg overflow-hidden">
             <div className="ut-accent-bar" />
 
-            <div className="p-6 space-y-6">
+            <div className="p-4 md:p-6 space-y-6">
               <div className="flex flex-wrap justify-between items-center gap-3 border-b border-slate-700 pb-4">
                 <h3 className="text-xs font-black text-white flex items-center gap-2 uppercase tracking-widest">
                   <BarChart3 size={14} /> لوحة الالتزام
@@ -980,7 +980,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
                       </div>
                     </div>
                     <div className="text-left">
-                      <div className="text-3xl font-black" style={{ color: rateOf(single) >= 90 ? '#34D399' : rateOf(single) >= 75 ? '#FBBF24' : '#F87171', direction: 'ltr' }}>
+                      <div className="text-2xl md:text-3xl font-black" style={{ color: rateOf(single) >= 90 ? '#34D399' : rateOf(single) >= 75 ? '#FBBF24' : '#F87171', direction: 'ltr' }}>
                         {rateOf(single)}%
                       </div>
                       <div className="text-[10px] font-black text-slate-500 uppercase">نسبة الالتزام</div>

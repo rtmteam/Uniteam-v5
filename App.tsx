@@ -368,7 +368,7 @@ const App: React.FC = () => {
   // في server-config.json دون الحاجة لإيقاف نشر الموقع
   if (maintenance.active) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-slate-900 relative z-10">
+      <div className="min-h-screen flex items-center justify-center p-4 md:p-6 bg-slate-900 relative z-10">
         <div className="w-full max-w-sm text-center">
           <div className="inline-flex items-center justify-center w-24 h-24 rounded-3xl bg-slate-800 border border-slate-700 mb-7">
             <Settings size={44} className="text-amber-500 animate-spin" style={{ animationDuration: '4s' }} />
@@ -544,7 +544,7 @@ const App: React.FC = () => {
       {/* iOS Installation Instructions Modal */}
       {showIosInstructions && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-end md:items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-3xl p-6 relative animate-in slide-in-from-bottom-10 duration-300">
+          <div className="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-3xl p-4 md:p-6 relative animate-in slide-in-from-bottom-10 duration-300">
             <button 
               onClick={() => setShowIosInstructions(false)}
               className="absolute left-4 top-4 text-slate-400 hover:text-white"
@@ -596,8 +596,8 @@ const App: React.FC = () => {
       )}
       {/* Developer Options Security Lock Screen Overlay */}
       {developerModeStatus.enabled && currentUser?.role !== 'admin' && (
-        <div className="fixed inset-0 z-[999] bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-300">
-          <div className="bg-red-500/10 p-6 rounded-full border border-red-500/30 mb-6 animate-pulse">
+        <div className="fixed inset-0 z-[999] bg-slate-950 text-white flex flex-col items-center justify-center p-4 md:p-6 text-center animate-in fade-in duration-300">
+          <div className="bg-red-500/10 p-4 md:p-6 rounded-full border border-red-500/30 mb-6 animate-pulse">
             <ShieldAlert size={64} className="text-red-500" />
           </div>
           <h2 className="text-2xl font-black text-red-500 mb-2">تم حظر فتح التطبيق</h2>
@@ -616,7 +616,7 @@ const App: React.FC = () => {
           </div>
           <button 
             onClick={() => setDeveloperModeStatus(checkDeveloperOptionsStatus())}
-            className="bg-red-600 hover:bg-red-500 text-white font-black px-8 py-3.5 rounded-2xl text-sm shadow-xl transition-all cursor-pointer flex items-center gap-2"
+            className="bg-red-600 hover:bg-red-500 text-white font-black px-5 md:px-8 py-3.5 rounded-2xl text-sm shadow-xl transition-all cursor-pointer flex items-center gap-2"
           >
             <RefreshCw size={18} />
             إعادة الفحص الآن
