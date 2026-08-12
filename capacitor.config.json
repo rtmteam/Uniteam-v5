@@ -1,10 +1,10 @@
 {
   "appId": "com.uniteam.attendance.v3",
-  "appName": "Uniteam v3",
+  "appName": "Uniteam",
   "webDir": "dist",
   "bundledWebRuntime": false,
   "server": {
-    "url": "https://bahaamohamed51-coder.github.io/Uniteam-v5/",
+    "url": "https://rtmteam.github.io/Uniteam-v5/",
     "cleartext": true,
     "androidScheme": "https",
     "errorPath": "offline.html"
