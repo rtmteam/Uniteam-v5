@@ -3,6 +3,7 @@ import React, { useState, useRef } from 'react';
 import { Branch, AttendanceRecord, AppConfig, User, Job, ReportAccount, VisitPlan } from '../types';
 import { MapPin, Table, Trash2, Shield, CloudUpload, Briefcase, RotateCcw, Globe, Users, Plus, FileSpreadsheet, Download, Share2, Smartphone, RefreshCw, Edit2, Check, X, Unlink, Key, Lock, Eye, EyeOff, Clock, Monitor, UserCheck, Calendar, Navigation, ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import ReportsView from './ReportsView';
 
 interface AdminDashboardProps {
   branches: Branch[];
@@ -27,7 +28,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   branches, setBranches, jobs, setJobs, records, config, setConfig, allUsers, setAllUsers, 
   reportAccounts = [], setReportAccounts, visitPlans, setVisitPlans, onRefresh, isSyncing, logAction
 }) => {
-  const [activeTab, setActiveTab] = useState<'branches' | 'jobs' | 'users' | 'plans' | 'report-access' | 'holidays' | 'settings'>('branches');
+  const [activeTab, setActiveTab] = useState<'branches' | 'jobs' | 'users' | 'plans' | 'report-access' | 'reports' | 'holidays' | 'settings'>('branches');
   const [newBranch, setNewBranch] = useState<Partial<Branch>>({ name: '', latitude: 0, longitude: 0, radius: 100 });
   const [newJobTitle, setNewJobTitle] = useState('');
   const [newHoliday, setNewHoliday] = useState('');
@@ -70,6 +71,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     { id: 'plans', label: 'خطط الزيارات', icon: Navigation },
     { id: 'holidays', label: 'الإجازات', icon: Calendar },
     { id: 'report-access', label: 'صلاحيات التقارير', icon: Key },
+    { id: 'reports', label: 'استعراض التقارير', icon: FileSpreadsheet },
     { id: 'settings', label: 'الإعدادات', icon: Monitor }
   ] as const;
 
@@ -428,16 +430,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           <nav className="admin-side__nav">
             {ADMIN_TABS.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`admin-nav-item${activeTab === tab.id ? ' admin-nav-item--active' : ''}`}
-                title={tab.label}
-              >
-                <tab.icon size={16} className="admin-nav-item__icon" />
-                <span className="admin-nav-item__label">{tab.label}</span>
-              </button>
+              <React.Fragment key={tab.id}>
+                {tab.id === 'reports' && (
+                  <div className="my-1.5 border-t border-slate-700/80 pt-1.5 px-1">
+                    <div className="text-[10px] font-black text-slate-400 mb-1 flex items-center gap-1">
+                      <FileSpreadsheet size={12} className="text-emerald-400" />
+                      <span>قسم الاستعلام</span>
+                    </div>
+                  </div>
+                )}
+                <button
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`admin-nav-item${activeTab === tab.id ? ' admin-nav-item--active' : ''} ${
+                    tab.id === 'reports' 
+                      ? activeTab === 'reports'
+                        ? '!bg-emerald-600 !text-white !border-emerald-400 shadow-lg shadow-emerald-900/40 font-bold' 
+                        : '!bg-emerald-950/30 !text-emerald-300 !border-emerald-800/60 hover:!bg-emerald-900/40'
+                      : ''
+                  }`}
+                  title={tab.label}
+                >
+                  <tab.icon size={16} className={`admin-nav-item__icon ${tab.id === 'reports' ? 'text-emerald-400' : ''}`} />
+                  <span className="admin-nav-item__label">{tab.label}</span>
+                </button>
+              </React.Fragment>
             ))}
+            <div className="my-1 border-t border-slate-700/60 pt-1"></div>
             <button 
               onClick={() => pushToCloud()} 
               disabled={isPushing} 
@@ -1118,6 +1136,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+        {activeTab === 'reports' && (
+          <div className="space-y-4 md:space-y-6">
+            <div className="bg-slate-900/50 p-3 md:p-4 rounded-2xl border border-slate-700 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <FileSpreadsheet size={20} className="text-emerald-400 shrink-0" />
+                <div>
+                  <h3 className="text-xs md:text-sm font-black text-white uppercase tracking-tighter">تقارير الحضور والانصراف المباشرة</h3>
+                  <p className="text-[10px] text-slate-400 font-bold">عرض وتصفية وتصدير البيانات من نفس الشاشة</p>
+                </div>
+              </div>
+            </div>
+            <div className="pt-2">
+              <ReportsView 
+                syncUrl={config.syncUrl} 
+                adminConfig={config} 
+                onUpdateConfig={(cfg) => setConfig(prev => ({ ...prev, ...cfg }))} 
+                logAction={logAction} 
+              />
             </div>
           </div>
         )}

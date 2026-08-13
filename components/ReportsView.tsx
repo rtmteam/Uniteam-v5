@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { FileSpreadsheet, Download, LogIn, Loader2, Table, Calendar as CalendarIcon, MapPin, User as UserIcon, Briefcase, Filter, RefreshCw, ChevronRight, ChevronLeft, X, Link as LinkIcon, AlertCircle, Check, ShieldCheck, ChevronDown, Search, Eye, EyeOff, BarChart3, TrendingUp, CheckCircle, Clock } from 'lucide-react';
+import { FileSpreadsheet, Download, LogIn, LogOut, Loader2, Table, Calendar as CalendarIcon, MapPin, User as UserIcon, Briefcase, Filter, RefreshCw, ChevronRight, ChevronLeft, X, Link as LinkIcon, AlertCircle, Check, ShieldCheck, ChevronDown, Search, Eye, EyeOff, BarChart3, TrendingUp, CheckCircle, Clock } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { AppConfig } from '../types';
 
@@ -9,6 +9,8 @@ interface ReportsViewProps {
   adminConfig: AppConfig;
   onUpdateConfig?: (cfg: Partial<AppConfig>) => void;
   logAction?: (action: string, details?: string) => void;
+  onLoginStateChange?: (loggedIn: boolean) => void;
+  onLogoutRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 const MultiSelect = ({ label, options, selected, onToggle, placeholder, icon: Icon }: { label: string, options: string[], selected: string[], onToggle: (val: string) => void, placeholder: string, icon: any }) => {
@@ -112,12 +114,25 @@ const CustomDatePicker = ({ label, value, onChange, placeholder }: { label: stri
   );
 };
 
-export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUpdateConfig, logAction }: ReportsViewProps) {
+export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUpdateConfig, logAction, onLoginStateChange, onLogoutRef }: ReportsViewProps) {
   const [localSyncUrl, setLocalSyncUrl] = useState(initialSyncUrl || localStorage.getItem('attendance_temp_sync_url') || '');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    onLoginStateChange?.(isLoggedIn);
+  }, [isLoggedIn, onLoginStateChange]);
+
+  useEffect(() => {
+    if (onLogoutRef) {
+      onLogoutRef.current = () => {
+        setIsLoggedIn(false);
+        logAction?.('تسجيل خروج متابع تقارير', `المستخدم: ${username}`);
+      };
+    }
+  }, [onLogoutRef, username, logAction]);
   const [isAdminLogin, setIsAdminLogin] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -133,6 +148,8 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
   const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
+  const [dashSearch, setDashSearch] = useState('');
+  const [dashFilter, setDashFilter] = useState<'all' | 'high' | 'med' | 'low'>('all');
   const activeSyncUrl = localSyncUrl || initialSyncUrl;
 
   const fetchData = async (showLoading = true) => {
@@ -810,9 +827,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-800 p-4 md:p-6 rounded-3xl border border-slate-700 shadow-xl">
         <div className="text-right w-full md:w-auto"><h2 className="text-xl font-black text-blue-400 flex items-center gap-2">{isAdminLogin ? <ShieldCheck size={24} className="text-orange-400" /> : <Table size={24} />} متابعة التقارير والوظائف {isAdminLogin && <span className="text-[10px] text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded-lg border border-orange-400/20 mr-2">Admin Mode</span>}</h2><p className="text-slate-500 text-[10px] font-black uppercase">المسؤول: {username}</p></div>
-        <div className="flex flex-wrap gap-2 justify-center">
-          <button type="button" onClick={() => fetchData(false)} disabled={isRefreshing} className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-blue-400 border border-slate-700 rounded-xl text-[10px] font-black hover:bg-slate-700 transition-all"><RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} /> تحديث البيانات</button>
-          <button type="button" onClick={() => { setIsLoggedIn(false); logAction?.('تسجيل خروج متابع تقارير', `المستخدم: ${username}`); }} className="px-4 py-2 bg-slate-900/50 text-slate-400 border border-slate-700/50 rounded-xl text-[10px] font-black hover:text-red-400">خروج</button>
+        <div className="flex flex-wrap gap-2 justify-center items-center">
           <div className="flex gap-1">
             <button type="button" onClick={exportToExcel} className="flex items-center gap-2 px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-2xl font-black text-[10px] shadow-xl transition-all border border-slate-600">
               <Download size={14} /> All Data
@@ -909,34 +924,65 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
         const ranked = [...rows].sort((a, b) => rateOf(b) - rateOf(a));
         const single = ranked.length === 1 ? ranked[0] : null;
 
+        const highCount = ranked.filter(r => rateOf(r) >= 90).length;
+        const medCount  = ranked.filter(r => rateOf(r) >= 75 && rateOf(r) < 90).length;
+        const lowCount  = ranked.filter(r => rateOf(r) < 75).length;
+        const topPerformer = ranked.length > 0 ? ranked[0] : null;
+
+        const filteredRanked = ranked.filter(r => {
+          const pr = rateOf(r);
+          let passFilter = true;
+          if (dashFilter === 'high') passFilter = pr >= 90;
+          else if (dashFilter === 'med') passFilter = pr >= 75 && pr < 90;
+          else if (dashFilter === 'low') passFilter = pr < 75;
+
+          if (!passFilter) return false;
+
+          if (!dashSearch.trim()) return true;
+          const q = dashSearch.toLowerCase().trim();
+          const empName = String(r['اسم الموظف'] || '').toLowerCase();
+          const jobTitle = String(r['الوظيفة'] || '').toLowerCase();
+          const branchName = String(r['اسم الفرع'] || '').toLowerCase();
+          const serialNum = String(r['الرقم التسلسلي'] || '').toLowerCase();
+          return empName.includes(q) || jobTitle.includes(q) || branchName.includes(q) || serialNum.includes(q);
+        });
+
         const KPI = ({ label, value, unit, tone, icon: Ico }: any) => (
-          <div className="bg-slate-900/50 border border-slate-700 rounded-2xl p-4">
+          <div className="bg-slate-900/50 border border-slate-700/80 rounded-2xl p-4 transition-all hover:border-slate-600">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{label}</span>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</span>
               <Ico size={15} style={{ color: tone }} />
             </div>
             <div className="flex items-baseline gap-1.5">
               <span className="text-2xl font-black text-white" style={{ direction: 'ltr' }}>{value}</span>
-              {unit && <span className="text-[10px] font-bold text-slate-500">{unit}</span>}
+              {unit && <span className="text-[10px] font-bold text-slate-400">{unit}</span>}
             </div>
           </div>
         );
 
         return (
-          <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-lg overflow-hidden">
+          <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-xl overflow-hidden">
             <div className="ut-accent-bar" />
 
             <div className="p-4 md:p-6 space-y-6">
               <div className="flex flex-wrap justify-between items-center gap-3 border-b border-slate-700 pb-4">
-                <h3 className="text-xs font-black text-white flex items-center gap-2 uppercase tracking-widest">
-                  <BarChart3 size={14} /> لوحة الالتزام
-                </h3>
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center border border-blue-500/30">
+                    <BarChart3 size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white uppercase tracking-wider">
+                      لوحة الالتزام والمتابعة الذكية
+                    </h3>
+                    <p className="text-[10px] text-slate-400 font-bold">تحليل مؤشرات الأداء ونسب الحضور والغياب</p>
+                  </div>
+                </div>
                 <span className="ut-chip ut-chip--brand">
                   {fromDate} — {toDate} · {rows.length} موظف
                 </span>
               </div>
 
-              {/* ===== المؤشرات ===== */}
+              {/* ===== المؤشرات الرئيسية ===== */}
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
                 <KPI label="نسبة الالتزام" value={rate} unit="%" tone="var(--el-400)" icon={TrendingUp} />
                 <KPI label="أيام الحضور" value={totAtt} unit={`من ${totWork}`} tone="#34D399" icon={CheckCircle} />
@@ -946,32 +992,53 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
                 <KPI label="ساعات إضافية" value={minToHm(otMin)} unit="س:د" tone="#34D399" icon={TrendingUp} />
               </div>
 
-              {/* ===== شريط التوزيع ===== */}
-              <div>
-                <div className="flex justify-between text-[10px] font-black text-slate-500 uppercase mb-2">
-                  <span>توزيع الأيام</span>
-                  <span style={{ direction: 'ltr' }}>{totWork} يوم عمل</span>
+              {/* ===== شريط التوزيع وشريط التميز ===== */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="lg:col-span-2 bg-slate-900/40 border border-slate-700/60 rounded-2xl p-4">
+                  <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase mb-2">
+                    <span>توزيع أيام العمل المتاحة</span>
+                    <span style={{ direction: 'ltr' }}>{totWork} يوم عمل</span>
+                  </div>
+                  <div className="flex h-3 rounded-full overflow-hidden bg-slate-950 p-0.5 border border-slate-800">
+                    {[
+                      { v: Math.max(0, totAtt - totLate), c: 'var(--grad-ok)' },
+                      { v: totLate, c: 'var(--grad-warn)' },
+                      { v: totAbs, c: 'var(--grad-bad)' }
+                    ].map((s, i) => s.v > 0 && (
+                      <div key={i} className="h-full rounded-sm" style={{ width: `${(s.v / Math.max(1, totWork)) * 100}%`, backgroundImage: s.c }} />
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-4 mt-3 text-[10px] font-bold">
+                    <span className="flex items-center gap-1.5 text-slate-300"><i className="w-2.5 h-2.5 rounded-full inline-block bg-emerald-500 shadow-sm shadow-emerald-500/50" /> في الموعد ({Math.max(0, totAtt - totLate)})</span>
+                    <span className="flex items-center gap-1.5 text-slate-300"><i className="w-2.5 h-2.5 rounded-full inline-block bg-amber-500 shadow-sm shadow-amber-500/50" /> متأخر ({totLate})</span>
+                    <span className="flex items-center gap-1.5 text-slate-300"><i className="w-2.5 h-2.5 rounded-full inline-block bg-red-500 shadow-sm shadow-red-500/50" /> غياب ({totAbs})</span>
+                    <span className="flex items-center gap-1.5 text-slate-300"><i className="w-2.5 h-2.5 rounded-full inline-block bg-blue-500 shadow-sm shadow-blue-500/50" /> انصراف مبكر ({totEarly})</span>
+                  </div>
                 </div>
-                <div className="flex h-2.5 rounded-full overflow-hidden bg-slate-900">
-                  {[
-                    { v: Math.max(0, totAtt - totLate), c: 'var(--grad-ok)' },
-                    { v: totLate, c: 'var(--grad-warn)' },
-                    { v: totAbs, c: 'var(--grad-bad)' }
-                  ].map((s, i) => s.v > 0 && (
-                    <div key={i} style={{ width: `${(s.v / Math.max(1, totWork)) * 100}%`, backgroundImage: s.c }} />
-                  ))}
-                </div>
-                <div className="flex flex-wrap gap-4 mt-2.5 text-[10px] font-bold">
-                  <span className="flex items-center gap-1.5 text-slate-400"><i className="w-2 h-2 rounded-full inline-block" style={{ background: 'var(--ok)' }} /> في الموعد {Math.max(0, totAtt - totLate)}</span>
-                  <span className="flex items-center gap-1.5 text-slate-400"><i className="w-2 h-2 rounded-full inline-block" style={{ background: 'var(--warn)' }} /> متأخر {totLate}</span>
-                  <span className="flex items-center gap-1.5 text-slate-400"><i className="w-2 h-2 rounded-full inline-block" style={{ background: 'var(--bad)' }} /> غياب {totAbs}</span>
-                  <span className="flex items-center gap-1.5 text-slate-400"><i className="w-2 h-2 rounded-full inline-block" style={{ background: 'var(--el-500)' }} /> انصراف مبكر {totEarly}</span>
-                </div>
+
+                {topPerformer && (
+                  <div className="bg-emerald-950/20 border border-emerald-500/30 rounded-2xl p-4 flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1">
+                      <span>الأبرز التزاماً 🏆</span>
+                      <span className="bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-md font-bold">{rateOf(topPerformer)}%</span>
+                    </div>
+                    <div>
+                      <div className="text-white text-sm font-black truncate">{topPerformer['اسم الموظف']}</div>
+                      <div className="text-[10px] font-bold text-slate-400 truncate mt-0.5">
+                        {topPerformer['الوظيفة']} · {topPerformer['اسم الفرع']}
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-bold mt-2 pt-2 border-t border-emerald-900/40 flex justify-between">
+                      <span>حضور: {topPerformer['عدد أيام الحضور']} يوم</span>
+                      <span>تأخير: {topPerformer['عدد أيام الحضور متأخر']} يوم</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* ===== بطاقة الموظف المفرد ===== */}
               {single && (
-                <div className="rounded-2xl p-5 border" style={{ background: 'rgba(37,99,235,.1)', borderColor: 'rgba(37,99,235,.3)' }}>
+                <div className="rounded-2xl p-5 border bg-blue-950/20 border-blue-500/40">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <div className="text-white text-base font-black">{single['اسم الموظف']}</div>
@@ -983,7 +1050,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
                       <div className="text-2xl md:text-3xl font-black" style={{ color: rateOf(single) >= 90 ? '#34D399' : rateOf(single) >= 75 ? '#FBBF24' : '#F87171', direction: 'ltr' }}>
                         {rateOf(single)}%
                       </div>
-                      <div className="text-[10px] font-black text-slate-500 uppercase">نسبة الالتزام</div>
+                      <div className="text-[10px] font-black text-slate-400 uppercase">نسبة الالتزام</div>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
@@ -995,62 +1062,134 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
                     ].map(([l, v]: any) => (
                       <div key={l} className="bg-slate-900/50 rounded-xl p-3 text-center">
                         <div className="text-white text-lg font-black" style={{ direction: 'ltr' }}>{v}</div>
-                        <div className="text-[9px] font-black text-slate-500 uppercase mt-1">{l}</div>
+                        <div className="text-[9px] font-black text-slate-400 uppercase mt-1">{l}</div>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* ===== جدول الالتزام ===== */}
+              {/* ===== شريط البحث والتصفية للوحة الالتزام ===== */}
               {!single && (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-right min-w-[720px]">
-                    <thead>
-                      <tr className="border-b border-slate-700 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                        <th className="py-3 px-2 text-right">الموظف</th>
-                        <th className="py-3 px-2 text-center">حضور</th>
-                        <th className="py-3 px-2 text-center">غياب</th>
-                        <th className="py-3 px-2 text-center">تأخير</th>
-                        <th className="py-3 px-2 text-center">ساعات التأخير</th>
-                        <th className="py-3 px-2 text-center w-40">الالتزام</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ranked.map((r, i) => {
-                        const pr = rateOf(r);
-                        const col = pr >= 90 ? 'var(--ok)' : pr >= 75 ? 'var(--warn)' : 'var(--bad)';
-                        return (
-                          <tr key={i} className="border-b border-slate-700/50 hover:bg-slate-900/40 transition-colors">
-                            <td className="py-3 px-2">
-                              <div className="text-white text-xs font-black">{r['اسم الموظف']}</div>
-                              <div className="text-[10px] text-slate-500 font-bold mt-0.5">{r['الوظيفة']} · {r['اسم الفرع']}</div>
-                            </td>
-                            <td className="py-3 px-2 text-center text-xs font-black text-slate-300" style={{ direction: 'ltr' }}>
-                              {r['عدد أيام الحضور']}<span className="text-slate-600">/{r['عدد أيام العمل المتاحة']}</span>
-                            </td>
-                            <td className="py-3 px-2 text-center text-xs font-black" style={{ color: num(r['عدد أيام الغياب']) > 0 ? '#F87171' : '#475569' }}>
-                              {r['عدد أيام الغياب']}
-                            </td>
-                            <td className="py-3 px-2 text-center text-xs font-black" style={{ color: num(r['عدد أيام الحضور متأخر']) > 0 ? '#FBBF24' : '#475569' }}>
-                              {r['عدد أيام الحضور متأخر']}
-                            </td>
-                            <td className="py-3 px-2 text-center text-[11px] font-black text-slate-400" style={{ direction: 'ltr' }}>
-                              {r['ساعات الحضور المتأخر']}
-                            </td>
-                            <td className="py-3 px-2">
-                              <div className="flex items-center gap-2">
-                                <div className="flex-1 h-2 rounded-full bg-slate-900 overflow-hidden">
-                                  <div className="h-full rounded-full" style={{ width: `${pr}%`, background: col }} />
-                                </div>
-                                <span className="text-[11px] font-black w-9 text-left" style={{ color: col, direction: 'ltr' }}>{pr}%</span>
-                              </div>
+                <div className="space-y-4 pt-2">
+                  <div className="flex flex-col md:flex-row gap-3 justify-between items-stretch md:items-center bg-slate-900/60 p-3 rounded-2xl border border-slate-700/60">
+                    {/* حقل البحث السريع */}
+                    <div className="relative flex-1">
+                      <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        value={dashSearch}
+                        onChange={(e) => setDashSearch(e.target.value)}
+                        placeholder="ابحث باسم الموظف، الوظيفة، أو الفرع..."
+                        className="w-full bg-slate-800 text-white pr-9 pl-8 py-2 rounded-xl text-xs font-bold border border-slate-700 focus:outline-none focus:border-blue-500 placeholder:text-slate-500"
+                      />
+                      {dashSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setDashSearch('')}
+                          className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* تبويبات الفلترة السريعة */}
+                    <div className="flex flex-wrap gap-1.5 text-xs font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setDashFilter('all')}
+                        className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${dashFilter === 'all' ? 'bg-blue-600 text-white font-black shadow-md' : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'}`}
+                      >
+                        الكل ({ranked.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDashFilter('high')}
+                        className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${dashFilter === 'high' ? 'bg-emerald-600 text-white font-black shadow-md' : 'bg-slate-800 text-emerald-400 hover:bg-emerald-950/30 border border-slate-700'}`}
+                      >
+                        ممتاز 90%+ ({highCount})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDashFilter('med')}
+                        className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${dashFilter === 'med' ? 'bg-amber-600 text-white font-black shadow-md' : 'bg-slate-800 text-amber-400 hover:bg-amber-950/30 border border-slate-700'}`}
+                      >
+                        متوسط 75-89% ({medCount})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDashFilter('low')}
+                        className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${dashFilter === 'low' ? 'bg-red-600 text-white font-black shadow-md' : 'bg-slate-800 text-red-400 hover:bg-red-950/30 border border-slate-700'}`}
+                      >
+                        يحتاج متابعة ({lowCount})
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* ===== جدول الالتزام المطوّر ===== */}
+                  <div className="overflow-x-auto rounded-2xl border border-slate-700/80">
+                    <table className="w-full text-right min-w-[720px]">
+                      <thead>
+                        <tr className="bg-slate-900/80 border-b border-slate-700 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                          <th className="py-3.5 px-3 text-center w-12">#</th>
+                          <th className="py-3.5 px-3 text-right">الموظف</th>
+                          <th className="py-3.5 px-3 text-center">الحضور</th>
+                          <th className="py-3.5 px-3 text-center">الغياب</th>
+                          <th className="py-3.5 px-3 text-center">التأخير</th>
+                          <th className="py-3.5 px-3 text-center">ساعات التأخير</th>
+                          <th className="py-3.5 px-3 text-center w-48">مؤشر الالتزام</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-700/40">
+                        {filteredRanked.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="py-8 text-center text-slate-400 text-xs font-bold bg-slate-900/20">
+                              لا توجد نتائج تطابق خيارات البحث أوالفلتر الحالية
                             </td>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                        ) : (
+                          filteredRanked.map((r, i) => {
+                            const pr = rateOf(r);
+                            const col = pr >= 90 ? 'var(--ok)' : pr >= 75 ? 'var(--warn)' : 'var(--bad)';
+                            const originalRank = ranked.findIndex(x => x['اسم الموظف'] === r['اسم الموظف']) + 1;
+
+                            return (
+                              <tr key={i} className="hover:bg-slate-900/50 transition-colors">
+                                <td className="py-3 px-3 text-center font-black text-xs text-slate-500">
+                                  {originalRank === 1 ? '🥇' : originalRank === 2 ? '🥈' : originalRank === 3 ? '🥉' : originalRank}
+                                </td>
+                                <td className="py-3 px-3">
+                                  <div className="text-white text-xs font-black">{r['اسم الموظف']}</div>
+                                  <div className="text-[10px] text-slate-400 font-bold mt-0.5">{r['الوظيفة']} · {r['اسم الفرع']}</div>
+                                </td>
+                                <td className="py-3 px-3 text-center text-xs font-black text-slate-300" style={{ direction: 'ltr' }}>
+                                  {r['عدد أيام الحضور']}<span className="text-slate-500">/{r['عدد أيام العمل المتاحة']}</span>
+                                </td>
+                                <td className="py-3 px-3 text-center text-xs font-black" style={{ color: num(r['عدد أيام الغياب']) > 0 ? '#F87171' : '#475569' }}>
+                                  {r['عدد أيام الغياب']}
+                                </td>
+                                <td className="py-3 px-3 text-center text-xs font-black" style={{ color: num(r['عدد أيام الحضور متأخر']) > 0 ? '#FBBF24' : '#475569' }}>
+                                  {r['عدد أيام الحضور متأخر']}
+                                </td>
+                                <td className="py-3 px-3 text-center text-[11px] font-black text-slate-300" style={{ direction: 'ltr' }}>
+                                  {r['ساعات الحضور المتأخر']}
+                                </td>
+                                <td className="py-3 px-3">
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex-1 h-2 rounded-full bg-slate-950 overflow-hidden p-0.5 border border-slate-800">
+                                      <div className="h-full rounded-full transition-all duration-300" style={{ width: `${pr}%`, background: col }} />
+                                    </div>
+                                    <span className="text-[11px] font-black w-10 text-left" style={{ color: col, direction: 'ltr' }}>{pr}%</span>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>

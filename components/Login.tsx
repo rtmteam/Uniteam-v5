@@ -1,9 +1,10 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { User, AppConfig, Job, Branch } from '../types';
-import { UserPlus, LogIn, ShieldAlert, Briefcase, Loader2, Link as LinkIcon, Smartphone, AlertCircle, WifiOff, MapPin, Eye, EyeOff, FileSpreadsheet } from 'lucide-react';
+import { UserPlus, LogIn, LogOut, ShieldAlert, Briefcase, Loader2, Link as LinkIcon, Smartphone, AlertCircle, WifiOff, MapPin, Eye, EyeOff, FileSpreadsheet, ArrowRight } from 'lucide-react';
 import { getDeviceFingerprint } from '../utils';
 import { LogoMark } from './Logo';
+import ReportsView from './ReportsView';
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -14,8 +15,7 @@ interface LoginProps {
   setAdminConfig: (cfg: Partial<AppConfig>) => void;
   logAction: (action: string, details?: string) => void;
   onSync?: (url?: string, force?: boolean) => Promise<any>;
-  /** يفتح شاشة التقارير كصفحة مستقلة. الزر في القائمة الجانبية
-      أسفل «الإدارة»، والعودة من زرٍّ في الترويسة. */
+  /** يفتح شاشة التقارير كصفحة مستقلة أو داخلية */
   onOpenReports?: () => void;
 }
 
@@ -30,10 +30,13 @@ export default function Login({
   onSync,
   onOpenReports
 }: LoginProps) {
-  const [mode, setMode] = useState<'register' | 'login' | 'admin'>('login');
+  const [mode, setMode] = useState<'register' | 'login' | 'admin' | 'reports'>('login');
+  const [isReportsLoggedIn, setIsReportsLoggedIn] = useState(false);
+  const reportsLogoutRef = useRef<(() => void) | null>(null);
   const [fullName, setFullName] = useState('');
   const [nationalId, setNationalId] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [selectedJob, setSelectedJob] = useState('');
   const [defaultBranch, setDefaultBranch] = useState('');
   const [adminUsername, setAdminUsername] = useState('');
@@ -41,6 +44,7 @@ export default function Login({
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showRegPassword, setShowRegPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showAdminPassword, setShowAdminPassword] = useState(false);
 
@@ -53,9 +57,15 @@ export default function Login({
       return;
     }
 
-    if (!fullName || !nationalId || !password || !selectedJob || !defaultBranch) {
+    if (!fullName || !nationalId || !password || !confirmPassword || !selectedJob || !defaultBranch) {
       setError('يرجى إكمال جميع البيانات واختيار الوظيفة والفرع الأساسي');
       logAction('فشل تسجيل مستخدم جديد', 'السبب: بيانات ناقصة');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('كلمة المرور وتأكيد كلمة المرور غير متطابقين');
+      logAction('فشل تسجيل مستخدم جديد', 'السبب: عدم تطابق كلمة المرور وتأكيدها');
       return;
     }
     
@@ -311,31 +321,30 @@ export default function Login({
 
   const inputClasses = "w-full px-4 py-3.5 rounded-2xl border border-slate-600 bg-slate-900 text-white placeholder:text-slate-500 font-bold outline-none focus:border-blue-500 transition-all shadow-inner";
 
-  const TABS: { id: 'login' | 'register' | 'admin'; label: string; icon: any; desc: string }[] = [
+  const TABS: { id: 'login' | 'register' | 'admin' | 'reports'; label: string; icon: any; desc: string }[] = [
     { id: 'login',    label: 'دخول الموظف', icon: LogIn,       desc: 'سجّل حضورك وانصرافك' },
     { id: 'register', label: 'حساب جديد',   icon: UserPlus,    desc: 'أنشئ حسابك لأول مرة' },
-    { id: 'admin',    label: 'الإدارة',      icon: ShieldAlert, desc: 'لوحة تحكم المسؤول' }
+    { id: 'admin',    label: 'الإدارة',      icon: ShieldAlert, desc: 'لوحة تحكم المسؤول' },
+    { id: 'reports',  label: 'التقارير',    icon: FileSpreadsheet, desc: 'عرض وتصدير سجلات الحضور والانصراف' }
   ];
 
+  const showSidebar = !(mode === 'reports' && isReportsLoggedIn);
+
   return (
-    <div className="login-shell">
+    <div className={`login-shell login-shell--reports-full ${mode === 'reports' ? (isReportsLoggedIn ? '!max-w-none !w-full !grid-cols-1' : 'max-w-6xl') : ''}`}>
 
       {/* ===================== القائمة الجانبية ===================== */}
-      <aside className="login-side">
-        <div className="login-side__head">
-          <div className="flex justify-center mb-3">
-            <LogoMark size={132} variant="full" />
+      {showSidebar && (
+        <aside className="login-side">
+          <div className="login-side__head">
+            <div className="flex justify-center mb-3">
+              <LogoMark size={132} variant="full" />
+            </div>
+            <div className="login-side__sub">نظام الحضور والانصراف</div>
           </div>
-          <div className="login-side__sub">نظام الحضور والانصراف</div>
-        </div>
 
-        {/* القائمة تظهر دائماً. كانت مشروطة بوصول إعدادات الخادم، فكان
-            الموظف على هاتف جديد يرى نموذج الدخول وحده بلا «حساب جديد»
-            ولا «الإدارة» ولا «التقارير» — وإن تعثّر جلب الإعدادات لم تظهر أبداً.
-            رسالة «جارٍ الاتصال بالخادم…» داخل البطاقة تكفي للتوضيح. */}
-        {(
           <nav className="login-side__nav">
-            {TABS.map(t => (
+            {TABS.filter(t => t.id !== 'reports').map(t => (
               <button
                 key={t.id}
                 type="button"
@@ -347,37 +356,77 @@ export default function Login({
               </button>
             ))}
 
-            {/* التقارير تفتح صفحة مستقلة، فلا تحمل حالة نشطة كبقية التبويبات */}
-            {onOpenReports && (
-              <button type="button" onClick={onOpenReports} className="login-tab">
-                <FileSpreadsheet size={17} className="login-tab__icon" />
-                <span>التقارير</span>
+            {/* فاصل وسُمة مميزة لبند التقارير */}
+            <div className="my-2 border-t border-slate-700/80 pt-2 col-span-4 sm:col-span-1">
+              <div className="text-[10px] font-black text-slate-400 mb-1.5 flex items-center gap-1 hidden sm:flex px-1">
+                <FileSpreadsheet size={12} className="text-emerald-400" />
+                <span>قسم التقارير والنتائج</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setMode('reports'); setError(''); }}
+                className={`login-tab w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border transition-all cursor-pointer ${
+                  mode === 'reports'
+                    ? 'bg-emerald-600 text-white border-emerald-400 shadow-lg shadow-emerald-900/40 font-bold'
+                    : 'bg-emerald-950/40 text-emerald-300 border-emerald-800/60 hover:bg-emerald-900/50 hover:border-emerald-500/60'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <FileSpreadsheet size={17} className="login-tab__icon text-emerald-400" />
+                  <span className="font-black text-xs">التقارير</span>
+                </div>
               </button>
-            )}
+            </div>
           </nav>
-        )}
 
-      </aside>
+        </aside>
+      )}
 
       {/* ===================== البطاقة الرئيسية ===================== */}
-      <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-2xl overflow-hidden">
+      <div className={`bg-slate-800 rounded-3xl border border-slate-700 shadow-2xl overflow-hidden ${!showSidebar ? 'w-full' : ''}`}>
         <div className="ut-accent-bar" />
 
-        <div className="p-6 md:p-8">
-          <div className="mb-6">
-            <h2 className="text-white text-lg font-black">
-              {TABS.find(t => t.id === mode)?.label}
-            </h2>
-            <p className="text-slate-500 text-[11px] font-bold mt-1">
-              {TABS.find(t => t.id === mode)?.desc}
-            </p>
+        <div className="p-4 md:p-8">
+          <div className="mb-6 flex items-center justify-between border-b border-slate-700/60 pb-4">
+            <div>
+              <h2 className="text-white text-lg font-black flex items-center gap-2">
+                {mode === 'reports' && <FileSpreadsheet className="text-emerald-400" size={20} />}
+                {TABS.find(t => t.id === mode)?.label}
+              </h2>
+              <p className="text-slate-400 text-[11px] font-bold mt-1">
+                {TABS.find(t => t.id === mode)?.desc}
+              </p>
+            </div>
+            {mode === 'reports' && isReportsLoggedIn && (
+              <button 
+                type="button" 
+                onClick={() => reportsLogoutRef.current?.()} 
+                className="bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800/80 text-xs font-bold px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-sm hover:border-red-500/80 shrink-0"
+              >
+                <LogOut size={15} className="text-red-400" />
+                <span>تسجيل خروج</span>
+              </button>
+            )}
           </div>
 
-          {!adminConfig.syncUrl && mode !== 'admin' && (
-            <div className="mb-5 p-4 bg-blue-900/20 border-r-4 border-blue-500 rounded-xl">
-              <p className="text-blue-400 text-xs font-bold">جارٍ الاتصال بالخادم…</p>
+          {mode === 'reports' ? (
+            <div className="pt-2">
+              <ReportsView 
+                syncUrl={adminConfig.syncUrl} 
+                adminConfig={adminConfig} 
+                onUpdateConfig={setAdminConfig} 
+                logAction={logAction} 
+                onLoginStateChange={setIsReportsLoggedIn}
+                onLogoutRef={reportsLogoutRef}
+              />
             </div>
-          )}
+          ) : (
+            <>
+              {!adminConfig.syncUrl && mode !== 'admin' && (
+                <div className="mb-5 p-4 bg-blue-900/20 border-r-4 border-blue-500 rounded-xl">
+                  <p className="text-blue-400 text-xs font-bold">جارٍ الاتصال بالخادم…</p>
+                </div>
+              )}
 
           {!navigator.onLine && (
             <div className="mb-4 p-3 bg-red-900/30 border border-red-500/50 rounded-2xl flex items-center gap-3 text-red-400 text-[11px] font-black">
@@ -427,6 +476,13 @@ export default function Login({
                 </button>
               </div>
 
+              <div className="relative">
+                <input type={showConfirmPassword ? 'text' : 'password'} placeholder="تأكيد كلمة المرور" minLength={6} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className={`${inputClasses} pl-12`} />
+                <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors">
+                  {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+
               <button type="submit" disabled={isLoading} className="w-full bg-blue-600 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2">
                 {isLoading ? <Loader2 className="animate-spin" size={20} /> : <UserPlus size={20} />}
                 {isLoading ? 'جارٍ الحفظ…' : 'تسجيل وتأمين الجهاز'}
@@ -467,6 +523,8 @@ export default function Login({
                 العودة لدخول الموظف
               </button>
             </form>
+          )}
+          </>
           )}
         </div>
       </div>
