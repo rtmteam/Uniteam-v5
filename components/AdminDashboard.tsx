@@ -1156,6 +1156,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 adminConfig={config} 
                 onUpdateConfig={(cfg) => setConfig(prev => ({ ...prev, ...cfg }))} 
                 logAction={logAction} 
+                autoLoginAdmin={true}
               />
             </div>
           </div>

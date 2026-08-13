@@ -11,6 +11,7 @@ interface ReportsViewProps {
   logAction?: (action: string, details?: string) => void;
   onLoginStateChange?: (loggedIn: boolean) => void;
   onLogoutRef?: React.MutableRefObject<(() => void) | null>;
+  autoLoginAdmin?: boolean;
 }
 
 const MultiSelect = ({ label, options, selected, onToggle, placeholder, icon: Icon }: { label: string, options: string[], selected: string[], onToggle: (val: string) => void, placeholder: string, icon: any }) => {
@@ -114,7 +115,7 @@ const CustomDatePicker = ({ label, value, onChange, placeholder }: { label: stri
   );
 };
 
-export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUpdateConfig, logAction, onLoginStateChange, onLogoutRef }: ReportsViewProps) {
+export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUpdateConfig, logAction, onLoginStateChange, onLogoutRef, autoLoginAdmin }: ReportsViewProps) {
   const [localSyncUrl, setLocalSyncUrl] = useState(initialSyncUrl || localStorage.getItem('attendance_temp_sync_url') || '');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -152,13 +153,15 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
   const [dashFilter, setDashFilter] = useState<'all' | 'high' | 'med' | 'low'>('all');
   const activeSyncUrl = localSyncUrl || initialSyncUrl;
 
-  const fetchData = async (showLoading = true) => {
+  const fetchData = async (showLoading = true, customUser?: string, customPass?: string) => {
+    const u = customUser !== undefined ? customUser : username;
+    const p = customPass !== undefined ? customPass : password;
     if (!activeSyncUrl) { setError('يرجى إدخال رابط المزامنة الخاص بالشركة أولاً'); setShowUrlField(true); return; }
-    if (!username || !password) { setError('يرجى إدخل اسم المستخدم وكلمة المرور'); return; }
+    if (!u || !p) { setError('يرجى إدخل اسم المستخدم وكلمة المرور'); return; }
     if (showLoading) setIsLoading(true); else setIsRefreshing(true);
     setError('');
     try {
-      const response = await fetch(`${activeSyncUrl}?action=getReportData&user=${encodeURIComponent(username)}&pass=${encodeURIComponent(password)}`);
+      const response = await fetch(`${activeSyncUrl}?action=getReportData&user=${encodeURIComponent(u)}&pass=${encodeURIComponent(p)}`);
       const data = await response.json();
       if (data.error) { 
         setError('بيانات الدخول غير صحيحة'); 
@@ -183,8 +186,8 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
            setFetchedHolidays(holidays);
         }
         setIsLoggedIn(true); 
-        logAction?.('تسجيل دخول متابع تقارير', `المستخدم: ${username}`);
-        if (adminConfig && username === adminConfig.adminUsername && password === adminConfig.adminPassword) setIsAdminLogin(true); 
+        logAction?.('تسجيل دخول متابع تقارير', `المستخدم: ${u}`);
+        if (adminConfig && u === adminConfig.adminUsername && p === adminConfig.adminPassword) setIsAdminLogin(true); 
         else setIsAdminLogin(false); 
         localStorage.setItem('attendance_temp_sync_url', activeSyncUrl); 
         setShowUrlField(false); 
@@ -192,9 +195,20 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
     } catch (err) { 
       setError('خطأ في الاتصال'); 
       setShowUrlField(true);
-      logAction?.('فشل جلب بيانات التقارير', `المستخدم: ${username}, الخطأ: ${err instanceof Error ? err.message : String(err)}`);
+      logAction?.('فشل جلب بيانات التقارير', `المستخدم: ${u}, الخطأ: ${err instanceof Error ? err.message : String(err)}`);
     } finally { setIsLoading(false); setIsRefreshing(false); }
   };
+
+  useEffect(() => {
+    if (autoLoginAdmin) {
+      const adminUser = adminConfig?.adminUsername || 'admin';
+      const adminPass = adminConfig?.adminPassword || 'Ba522129';
+      setUsername(adminUser);
+      setPassword(adminPass);
+      setIsAdminLogin(true);
+      fetchData(true, adminUser, adminPass);
+    }
+  }, [autoLoginAdmin, adminConfig?.syncUrl]);
 
   const handleUnlink = () => {
     if (window.confirm('هل أنت متأكد من رغبتك في فك الارتباط بالشركة الحالية؟')) {
@@ -775,6 +789,38 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
   const toggleBranchSelection = (val: string) => setSelectedBranches(prev => prev.includes(val) ? prev.filter(x => x !== val) : [...prev, val]);
 
   if (!isLoggedIn) {
+    if (autoLoginAdmin) {
+      return (
+        <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 mb-4 shadow-lg shadow-blue-900/20">
+            <Loader2 className="animate-spin" size={32} />
+          </div>
+          <h3 className="text-white font-black text-base">جاري استعراض التقارير...</h3>
+          <p className="text-slate-400 text-xs mt-1">يتم التحميل المباشر بصلاحية المسؤول</p>
+          {error && (
+            <div className="mt-4 p-4 bg-red-900/30 border border-red-500/50 rounded-2xl text-red-300 text-xs font-bold max-w-md flex flex-col items-center gap-3">
+              <div className="flex items-center gap-2">
+                <AlertCircle size={18} className="text-red-400 shrink-0" />
+                <span>{error}</span>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => {
+                  const adminUser = adminConfig?.adminUsername || 'admin';
+                  const adminPass = adminConfig?.adminPassword || 'Ba522129';
+                  fetchData(true, adminUser, adminPass);
+                }}
+                className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-black shadow-lg cursor-pointer transition-all active:scale-95 flex items-center gap-2"
+              >
+                <RefreshCw size={14} />
+                <span>إعادة المحاولة</span>
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
     return (
       <div className="flex items-center justify-center py-12 px-4">
         <div className="bg-slate-800 rounded-3xl p-5 md:p-8 w-full max-w-md border border-slate-700 shadow-2xl">
