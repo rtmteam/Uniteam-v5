@@ -607,6 +607,35 @@ html, body {
 }
 .login-tab__icon { flex: none; }
 
+/* ---------- تبويب التقارير ----------
+   يميّزه اللون الأخضر عن التبويبات الثلاثة الزرقاء، لكنه يستعمل نفس آلية
+   .login-tab--active حتى تتساوى وضوح الضغطة عليه بوضوحها على جيرانه.
+   المحدّد المركّب (صنفان) يرفع النوعية فوق .login-tab وحدها. */
+.login-tab--reports {
+  background: rgba(4, 47, 34, .45);
+  border-color: rgba(6, 95, 70, .6);
+  color: #6EE7B7;
+  border-radius: var(--r);
+}
+.login-tab--reports .login-tab__icon { color: #34D399; }
+
+.login-tab--reports.login-tab--active,
+.login-tab--reports.login-tab--active:hover {
+  background: var(--grad-ok);
+  border-color: #34D399;
+  color: #fff;
+  box-shadow: 0 0 0 1px rgba(52,211,153,.25), 0 8px 20px rgba(4,120,87,.45);
+}
+.login-tab--reports.login-tab--active .login-tab__icon { color: #fff; }
+
+@media (hover: hover) and (pointer: fine) {
+  .login-tab--reports:hover {
+    background: rgba(6, 78, 59, .55);
+    border-color: rgba(52, 211, 153, .6);
+    color: #A7F3D0;
+  }
+}
+
 .login-side__note {
   margin-top: 16px; padding: 12px;
   border-radius: var(--r); border: 1px solid rgba(255,255,255,.08);

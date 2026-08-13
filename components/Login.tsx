@@ -303,11 +303,10 @@ export default function Login({
         const data = await response.json();
         
         if (data.error) {
-          // تحذير لا نقض: البيانات صحيحة محلياً لكن شيت Config يحمل
-          // كلمة مرور مختلفة. لو منعنا الدخول هنا لأُقفلت لوحة الإدارة
-          // نهائياً ولا سبيل للدخول لتصحيح الإعدادات نفسها.
-          logAction('تحذير: بيانات المسؤول لا تطابق الخادم السحابي', `المسؤول: ${user}`);
-          console.warn("Cloud admin credentials mismatch — proceeding with local admin access");
+          logAction('فشل تسجيل دخول مسؤول (سحابي)', `المسؤول: ${user}`);
+          setError('بيانات الدخول غير صحيحة أو تم رفضها من الخادم السحابي.');
+          setIsLoading(false);
+          return;
         }
       } catch (err) {
         console.warn("Cloud admin check warning", err);
@@ -357,22 +356,26 @@ export default function Login({
             ))}
 
             {/* فاصل وسُمة مميزة لبند التقارير */}
-            <div className="my-2 border-t border-slate-700/80 pt-2 col-span-4 sm:col-span-1">
+            <div className="my-2 border-t border-slate-700/80 pt-2 col-span-full sm:col-span-1">
               <div className="text-[10px] font-black text-slate-400 mb-1.5 flex items-center gap-1 hidden sm:flex px-1">
                 <FileSpreadsheet size={12} className="text-emerald-400" />
                 <span>قسم التقارير والنتائج</span>
               </div>
+              {/* أصناف bg-emerald-* من Tailwind كانت تخسر أمام .login-tab في
+                  theme.css لتساوي النوعية وتأخّر استيراد theme، فلا يظهر
+                  التفعيل الأخضر إطلاقاً. الحالة الآن من نظام الرموز. */}
               <button
                 type="button"
                 onClick={() => { setMode('reports'); setError(''); }}
-                className={`login-tab w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border transition-all cursor-pointer ${
-                  mode === 'reports'
-                    ? 'bg-emerald-600 text-white border-emerald-400 shadow-lg shadow-emerald-900/40 font-bold'
-                    : 'bg-emerald-950/40 text-emerald-300 border-emerald-800/60 hover:bg-emerald-900/50 hover:border-emerald-500/60'
+                className={`login-tab login-tab--reports w-full flex items-center justify-between gap-2 px-3 py-2.5 transition-all cursor-pointer ${
+                  mode === 'reports' ? 'login-tab--active' : ''
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <FileSpreadsheet size={17} className="login-tab__icon text-emerald-400" />
+                  {/* لا text-emerald-400 هنا: skin.css يعرّفها بـ !important
+                      فتبقى الأيقونة خضراء فوق الخلفية الخضراء عند التفعيل.
+                      لونها في الحالتين يأتي من .login-tab--reports. */}
+                  <FileSpreadsheet size={17} className="login-tab__icon" />
                   <span className="font-black text-xs">التقارير</span>
                 </div>
               </button>
