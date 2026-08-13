@@ -286,36 +286,36 @@ export default function Login({
     const user = adminUsername.trim();
     const pass = adminPassword.trim();
     
-    // 1. Local Check (Configured from single source of truth in App.tsx)
-    const isLocalValid = user === adminConfig.adminUsername && pass === adminConfig.adminPassword;
+    // Check strictly against configured Admin credentials (SSOT)
+    const isAdminValid = user === adminConfig.adminUsername && pass === adminConfig.adminPassword;
 
-    if (isLocalValid) {
-      logAction('تسجيل دخول مسؤول (محلي)', `المسؤول: ${user}`);
-      onLogin({ id: 'admin-id', fullName: 'المسؤول', nationalId: '000', role: 'admin' });
+    if (!isAdminValid) {
+      logAction('فشل تسجيل دخول مسؤول', `حساب غير مصرح له كمسؤول: ${user}`);
+      setError('بيانات دخول المسؤول غير صحيحة. يرجى إدخال اسم المستخدم وكلمة المرور الخاصة بالإدارة فقط.');
       setIsLoading(false);
       return;
     }
 
-    // 2. Cloud Check (if syncUrl is available) - To match ReportsView behavior
+    // Optional cloud check if syncUrl is available to confirm cloud status for admin
     if (adminConfig.syncUrl) {
       try {
         const response = await fetch(`${adminConfig.syncUrl}?action=getReportData&user=${encodeURIComponent(user)}&pass=${encodeURIComponent(pass)}`);
         const data = await response.json();
         
-        if (!data.error) {
-          // If cloud accepts, allow access to management
-          logAction('تسجيل دخول مسؤول (سحابي)', `المسؤول: ${user}`);
-          onLogin({ id: 'admin-id', fullName: `المسؤول (${user})`, nationalId: '000', role: 'admin' });
-          setIsLoading(false);
-          return;
+        if (data.error) {
+          // تحذير لا نقض: البيانات صحيحة محلياً لكن شيت Config يحمل
+          // كلمة مرور مختلفة. لو منعنا الدخول هنا لأُقفلت لوحة الإدارة
+          // نهائياً ولا سبيل للدخول لتصحيح الإعدادات نفسها.
+          logAction('تحذير: بيانات المسؤول لا تطابق الخادم السحابي', `المسؤول: ${user}`);
+          console.warn("Cloud admin credentials mismatch — proceeding with local admin access");
         }
       } catch (err) {
-        console.error("Cloud admin check failed", err);
+        console.warn("Cloud admin check warning", err);
       }
     }
 
-    logAction('فشل تسجيل دخول مسؤول', `المحاولة باسم: ${user}`);
-    setError('بيانات المسؤول غير صحيحة. تأكد من حالة الأحرف (B كبيرة) أو استخدم بيانات تقارير المسؤول');
+    logAction('تسجيل دخول مسؤول', `المسؤول: ${user}`);
+    onLogin({ id: 'admin-id', fullName: 'المسؤول', nationalId: '000', role: 'admin' });
     setIsLoading(false);
   };
 

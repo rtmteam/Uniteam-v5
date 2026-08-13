@@ -141,7 +141,41 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
   const [authorizedUsers, setAuthorizedUsers] = useState<any[]>([]); // New state for users
   const [visitPlans, setVisitPlans] = useState<any[]>([]); // New state for visit plans
   const [fetchedJobs, setFetchedJobs] = useState<any[]>([]);
+  const [fetchedBranches, setFetchedBranches] = useState<any[]>([]);
   const [fetchedHolidays, setFetchedHolidays] = useState<string[]>([]);
+
+  /**
+   * استخراج كود الفرع.
+   *
+   * عمود "Default Branch" في شيت الموظفين يخزّن **معرّف** الفرع لا اسمه،
+   * فالمطابقة بالاسم وحدها كانت تفشل دائماً في مسار الملخّص.
+   * نطابق هنا بالمعرّف والاسم معاً، ونقدّم ما يرسله الخادم جاهزاً إن وُجد.
+   */
+  const getBranchCode = (branchNameOrId?: string, entity?: any) => {
+    if (entity?.branchCode) return entity.branchCode;
+    if (entity?.branch_code) return entity.branch_code;
+    if (entity?.code) return entity.code;
+
+    const keys = [branchNameOrId, entity?.defaultBranchId, entity?.branchId]
+      .filter(Boolean)
+      .map(v => v!.toString().trim().toLowerCase());
+    if (keys.length === 0) return '';
+
+    const found = fetchedBranches.find(b =>
+      keys.indexOf((b.id ?? '').toString().trim().toLowerCase()) !== -1 ||
+      keys.indexOf((b.name ?? '').toString().trim().toLowerCase()) !== -1
+    );
+    return found?.code || '';
+  };
+
+  /** اسم الفرع المقروء — يحلّ المعرّف العشوائي إن لم يُحلّه الخادم */
+  const getBranchName = (branchNameOrId?: string, entity?: any) => {
+    const raw = (branchNameOrId ?? '').toString().trim();
+    if (!raw) return '';
+    const key = raw.toLowerCase();
+    const found = fetchedBranches.find(b => (b.id ?? '').toString().trim().toLowerCase() === key);
+    return found?.name || raw;
+  };
   const [error, setError] = useState('');
   const [showUrlField, setShowUrlField] = useState(!initialSyncUrl);
   const [fromDate, setFromDate] = useState('');
@@ -181,6 +215,8 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
            setVisitPlans(plans);
            const jobs = (data.jobs && data.jobs.length > 0) ? data.jobs : JSON.parse(localStorage.getItem('attendance_jobs') || '[]');
            setFetchedJobs(jobs);
+           const branches = (data.branches && data.branches.length > 0) ? data.branches : JSON.parse(localStorage.getItem('attendance_branches') || '[]');
+           setFetchedBranches(branches);
            const config = JSON.parse(localStorage.getItem('attendance_config') || '{}');
            const holidays = (data.holidays && data.holidays.length > 0) ? data.holidays : (config.holidays || []);
            setFetchedHolidays(holidays);
@@ -242,6 +278,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
         'Employee Name': r.name,
         'Serial Number': r.serialNumber || 'N/A', 
         'Job': r.job,
+        'Branch Code': getBranchCode(r.branch, r),
         'Branch': r.branch,
         'Type': r.type === 'check-in' ? 'Check-In' : 'Check-Out',
         'Time Diff': r.timeDiff || '', 
@@ -417,8 +454,10 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
 
       employeeSummary[userId] = {
             name: u.fullName,
-            branchName: u.defaultBranch,
+            branchCode: getBranchCode(u.defaultBranch, u),
+            branchName: getBranchName(u.defaultBranch, u),
             jobTitle: u.jobTitle,
+            serialNumber: u.serialNumber || 'N/A',
             workingDaysCount: userWorkingDaysCount,
             workingDaysSet: userWorkingDaysSet,
             attendanceDates: new Set<string>(),
@@ -516,6 +555,8 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
 
       return {
         'اسم الموظف': s.name,
+        'الرقم التسلسلي': s.serialNumber || 'N/A',
+        'كود الفرع': s.branchCode || '',
         'اسم الفرع': s.branchName,
         'الوظيفة': s.jobTitle,
         'عدد أيام العمل المتاحة': s.workingDaysCount,
@@ -697,9 +738,11 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
             'اليوم': dateKey,
             'الخطة': plan ? (plan.branchName || plan.branch || 'خطة موجودة') : 'لا توجد خطة',
             'وقت الحضور': firstIn ? new Date(firstIn.time).toLocaleTimeString('en-US') : 'لم يسجل',
+            'كود فرع الحضور': firstIn ? getBranchCode(firstIn.branch, firstIn) : '',
             'فرع الحضور': firstIn ? firstIn.branch : '',
             'حالة الحضور': inStatus,
             'وقت الانصراف': lastOut ? new Date(lastOut.time).toLocaleTimeString('en-US') : 'لم يسجل',
+            'كود فرع الانصراف': lastOut ? getBranchCode(lastOut.branch, lastOut) : '',
             'فرع الانصراف': lastOut ? lastOut.branch : '',
             'حالة الانصراف': outStatus
           });
@@ -783,6 +826,19 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
     }
     return m; 
   }), [records, fromDate, toDate, selectedJobs, selectedEmployees, selectedBranches]);
+
+  /**
+   * صفوف لوحة الالتزام.
+   *
+   * buildSummary تمرّ على كل موظف × كل يوم في الفترة وتبحث في خطط الزيارات،
+   * وكانت تُستدعى داخل الـ render مباشرةً فتُعاد بالكامل عند كل ضغطة مفتاح
+   * في حقل بحث اللوحة. التذكير هنا يقصرها على تغيّر مدخلاتها الفعلية.
+   */
+  const dashboardRows = useMemo(
+    () => buildSummary(true),
+    [records, authorizedUsers, visitPlans, fetchedJobs, fetchedBranches, fetchedHolidays,
+     fromDate, toDate, selectedJobs, selectedEmployees, selectedBranches]
+  );
 
   const toggleJobSelection = (val: string) => setSelectedJobs(prev => prev.includes(val) ? prev.filter(x => x !== val) : [...prev, val]);
   const toggleEmployeeSelection = (val: string) => setSelectedEmployees(prev => prev.includes(val) ? prev.filter(x => x !== val) : [...prev, val]);
@@ -934,7 +990,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
 
       {/* ==================== لوحة الالتزام التفاعلية ==================== */}
       {(() => {
-        const rows = buildSummary(true);
+        const rows = dashboardRows;
         if (!rows || rows.length === 0) {
           return (
             <div className="bg-slate-800 p-5 md:p-8 rounded-3xl border border-slate-700 shadow-lg text-center">
@@ -989,8 +1045,9 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
           const empName = String(r['اسم الموظف'] || '').toLowerCase();
           const jobTitle = String(r['الوظيفة'] || '').toLowerCase();
           const branchName = String(r['اسم الفرع'] || '').toLowerCase();
+          const branchCode = String(r['كود الفرع'] || '').toLowerCase();
           const serialNum = String(r['الرقم التسلسلي'] || '').toLowerCase();
-          return empName.includes(q) || jobTitle.includes(q) || branchName.includes(q) || serialNum.includes(q);
+          return empName.includes(q) || jobTitle.includes(q) || branchName.includes(q) || branchCode.includes(q) || serialNum.includes(q);
         });
 
         const KPI = ({ label, value, unit, tone, icon: Ico }: any) => (
@@ -1202,26 +1259,26 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
 
                             return (
                               <tr key={i} className="hover:bg-slate-900/50 transition-colors">
-                                <td className="py-3 px-3 text-center font-black text-xs text-slate-500">
+                                <td data-label="الترتيب" className="py-3 px-3 text-center font-black text-xs text-slate-500">
                                   {originalRank === 1 ? '🥇' : originalRank === 2 ? '🥈' : originalRank === 3 ? '🥉' : originalRank}
                                 </td>
-                                <td className="py-3 px-3">
+                                <td data-label="الموظف" className="py-3 px-3">
                                   <div className="text-white text-xs font-black">{r['اسم الموظف']}</div>
                                   <div className="text-[10px] text-slate-400 font-bold mt-0.5">{r['الوظيفة']} · {r['اسم الفرع']}</div>
                                 </td>
-                                <td className="py-3 px-3 text-center text-xs font-black text-slate-300" style={{ direction: 'ltr' }}>
+                                <td data-label="الحضور" className="py-3 px-3 text-center text-xs font-black text-slate-300" style={{ direction: 'ltr' }}>
                                   {r['عدد أيام الحضور']}<span className="text-slate-500">/{r['عدد أيام العمل المتاحة']}</span>
                                 </td>
-                                <td className="py-3 px-3 text-center text-xs font-black" style={{ color: num(r['عدد أيام الغياب']) > 0 ? '#F87171' : '#475569' }}>
+                                <td data-label="الغياب" className="py-3 px-3 text-center text-xs font-black" style={{ color: num(r['عدد أيام الغياب']) > 0 ? '#F87171' : '#475569' }}>
                                   {r['عدد أيام الغياب']}
                                 </td>
-                                <td className="py-3 px-3 text-center text-xs font-black" style={{ color: num(r['عدد أيام الحضور متأخر']) > 0 ? '#FBBF24' : '#475569' }}>
+                                <td data-label="التأخير" className="py-3 px-3 text-center text-xs font-black" style={{ color: num(r['عدد أيام الحضور متأخر']) > 0 ? '#FBBF24' : '#475569' }}>
                                   {r['عدد أيام الحضور متأخر']}
                                 </td>
-                                <td className="py-3 px-3 text-center text-[11px] font-black text-slate-300" style={{ direction: 'ltr' }}>
+                                <td data-label="ساعات التأخير" className="py-3 px-3 text-center text-[11px] font-black text-slate-300" style={{ direction: 'ltr' }}>
                                   {r['ساعات الحضور المتأخر']}
                                 </td>
-                                <td className="py-3 px-3">
+                                <td data-label="مؤشر الالتزام" className="py-3 px-3">
                                   <div className="flex items-center gap-2">
                                     <div className="flex-1 h-2 rounded-full bg-slate-950 overflow-hidden p-0.5 border border-slate-800">
                                       <div className="h-full rounded-full transition-all duration-300" style={{ width: `${pr}%`, background: col }} />

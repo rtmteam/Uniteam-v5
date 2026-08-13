@@ -29,7 +29,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   reportAccounts = [], setReportAccounts, visitPlans, setVisitPlans, onRefresh, isSyncing, logAction
 }) => {
   const [activeTab, setActiveTab] = useState<'branches' | 'jobs' | 'users' | 'plans' | 'report-access' | 'reports' | 'holidays' | 'settings'>('branches');
-  const [newBranch, setNewBranch] = useState<Partial<Branch>>({ name: '', latitude: 0, longitude: 0, radius: 100 });
+  const [newBranch, setNewBranch] = useState<Partial<Branch>>({ code: '', name: '', latitude: 0, longitude: 0, radius: 100 });
   const [newJobTitle, setNewJobTitle] = useState('');
   const [newHoliday, setNewHoliday] = useState('');
   const [isPushing, setIsPushing] = useState(false);
@@ -166,7 +166,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     let fileName = "";
     
     if (type === 'branches') {
-      data = [{ "اسم الفرع": "الفرع الرئيسي", "خط العرض": 30.05, "خط الطول": 31.23, "النطاق بالمتر": 100 }];
+      data = [{ "كود الفرع": "101", "اسم الفرع": "الفرع الرئيسي", "خط العرض": 30.05, "خط الطول": 31.23, "النطاق بالمتر": 100 }];
       fileName = "template_branches.xlsx";
     } else if (type === 'jobs') {
       data = [{ "اسم الوظيفة": "مهندس", "زيارة فروع متعددة": "نعم" }];
@@ -205,7 +205,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const bstr = evt.target?.result; const wb = XLSX.read(bstr, { type: 'binary' }); const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
         
         if (type === 'branches') { 
-          setBranches(prev => [...prev, ...data.map((item: any) => ({ id: Math.random().toString(36).substr(2, 9), name: item["اسم الفرع"] || 'فرع جديد', latitude: parseFloat(item["خط العرض"] || 0), longitude: parseFloat(item["خط الطول"] || 0), radius: parseInt(item["النطاق بالمتر"] || 100) }))]); 
+          setBranches(prev => [...prev, ...data.map((item: any) => ({
+            id: Math.random().toString(36).substr(2, 9),
+            code: (item["كود الفرع"] || item["كود"] || item["Code"] || item["code"] || '').toString().trim(),
+            name: item["اسم الفرع"] || 'فرع جديد',
+            latitude: parseFloat(item["خط العرض"] || 0),
+            longitude: parseFloat(item["خط الطول"] || 0),
+            radius: parseInt(item["النطاق بالمتر"] || 100)
+          }))]); 
           logAction('استيراد فروع', `تم استيراد ${data.length} فرع من ملف إكسل`);
         } else if (type === 'jobs') { 
           setJobs(prev => [...prev, ...data.map((item: any) => ({ id: Math.random().toString(36).substr(2, 9), title: item["اسم الوظيفة"] || 'موظف', canVisitMultipleBranches: item["زيارة فروع متعددة"] === "نعم" }))]); 
@@ -621,7 +628,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                <div className="text-xs font-black text-slate-300 flex items-center gap-1.5">
                  <Plus size={15} className="text-blue-400" /> إضافة فرع جديد
                </div>
-               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+                 <input type="text" placeholder="كود الفرع" className="bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-mono outline-none text-white col-span-1" value={newBranch.code || ''} onChange={e => setNewBranch({...newBranch, code: e.target.value})} />
                  <input type="text" placeholder="اسم الفرع" className="bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-xl px-3 py-2 text-xs outline-none text-white col-span-2 sm:col-span-1" value={newBranch.name} onChange={e => setNewBranch({...newBranch, name: e.target.value})} />
                  <input type="number" step="0.000001" placeholder="Lat (العرض)" className="bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-mono outline-none text-white col-span-1" value={newBranch.latitude || ''} onChange={e => setNewBranch({...newBranch, latitude: parseFloat(e.target.value)})} />
                  <input type="number" step="0.000001" placeholder="Lng (الطول)" className="bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-mono outline-none text-white col-span-1" value={newBranch.longitude || ''} onChange={e => setNewBranch({...newBranch, longitude: parseFloat(e.target.value)})} />
@@ -629,8 +637,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                  <button onClick={() => {
                    if (newBranch.name) {
                      setBranches([...branches, { ...newBranch, id: Math.random().toString(36).substr(2, 9), radius: newBranch.radius || 100 } as Branch]);
-                     logAction('إضافة فرع جديد', `الفرع: ${newBranch.name}`);
-                     setNewBranch({ name: '', latitude: 0, longitude: 0, radius: 100 });
+                     logAction('إضافة فرع جديد', `الفرع: ${newBranch.name} (${newBranch.code || 'بدون كود'})`);
+                     setNewBranch({ code: '', name: '', latitude: 0, longitude: 0, radius: 100 });
                    }
                  }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black py-2 px-4 text-xs flex items-center justify-center gap-1.5 transition-all col-span-2 sm:col-span-1 shadow-md">
                    <Plus size={16}/> إضافة فرع
@@ -653,6 +661,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                  <thead><tr className="border-b border-slate-700 text-[10px] font-black text-slate-500 uppercase tracking-widest">
                    <th className="py-4 px-2 w-10 text-center"><input type="checkbox" checked={selectedBranches.size === branches.length && branches.length > 0} onChange={toggleSelectAllBranches} className="accent-blue-600 cursor-pointer" /></th>
                    <th className="py-4 px-2 text-center w-28">الترتيب</th>
+                   <th className="py-4 px-2 text-center">كود الفرع</th>
                    <th className="py-4 px-2">اسم الفرع</th><th className="py-4 px-2">إحداثيات (Lat, Lng)</th><th className="py-4 px-2 text-center">النطاق</th><th className="py-4 px-2 text-center">إجراءات</th></tr></thead>
                                    <tbody>{branches.map((b, idx) => (
                     <tr 
@@ -701,6 +710,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </select>
                         </div>
                       </td>
+                      <td data-label="كود الفرع" className="py-4 px-2 text-center font-mono text-xs font-bold text-amber-400">{editingBranchId === b.id ? (<input className="bg-slate-900 border border-blue-500 rounded px-2 py-1.5 text-xs font-mono w-full outline-none text-white text-center" placeholder="كود" value={editBranchData.code || ''} onChange={e => setEditBranchData({...editBranchData, code: e.target.value})} />) : (b.code || '--')}</td>
                       <td data-label="اسم الفرع" className="py-4 px-2 font-black">{editingBranchId === b.id ? (<input className="bg-slate-900 border border-blue-500 rounded px-3 py-1.5 text-xs w-full outline-none text-white" value={editBranchData.name || ''} onChange={e => setEditBranchData({...editBranchData, name: e.target.value})} />) : (<span className="text-emerald-400">{b.name}</span>)}</td>
                       <td data-label="إحداثيات (Lat, Lng)" className="py-4 px-2">{editingBranchId === b.id ? (<div className="flex gap-1"><input type="number" step="0.000001" className="bg-slate-900 border border-blue-500 rounded px-2 py-1.5 text-[10px] w-full font-mono outline-none text-white" placeholder="Lat" value={editBranchData.latitude || ''} onChange={e => setEditBranchData({...editBranchData, latitude: parseFloat(e.target.value)})} /><input type="number" step="0.000001" className="bg-slate-900 border border-blue-500 rounded px-2 py-1.5 text-[10px] w-full font-mono outline-none text-white" placeholder="Lng" value={editBranchData.longitude || ''} onChange={e => setEditBranchData({...editBranchData, longitude: parseFloat(e.target.value)})} /></div>) : (<span className="text-[10px] text-slate-400 font-mono">{b.latitude.toFixed(6)}, {b.longitude.toFixed(6)}</span>)}</td>
                       <td data-label="النطاق" className="py-4 px-2 text-center">{editingBranchId === b.id ? (<input type="number" className="bg-slate-900 border border-blue-500 rounded px-2 py-1.5 text-xs w-20 text-center outline-none text-white" value={editBranchData.radius || ''} onChange={e => setEditBranchData({...editBranchData, radius: parseInt(e.target.value)})} />) : (<span className="text-blue-400 font-black text-xs">{b.radius}م</span>)}</td>
