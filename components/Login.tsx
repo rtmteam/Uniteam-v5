@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import { User, AppConfig, Job, Branch } from '../types';
-import { UserPlus, LogIn, LogOut, ShieldAlert, Briefcase, Loader2, Link as LinkIcon, Smartphone, AlertCircle, WifiOff, MapPin, Eye, EyeOff, FileSpreadsheet, ArrowRight } from 'lucide-react';
+import { UserPlus, LogIn, LogOut, ShieldAlert, Briefcase, Loader2, Link as LinkIcon, Smartphone, AlertCircle, WifiOff, MapPin, Eye, EyeOff, FileSpreadsheet, ArrowRight, KeyRound } from 'lucide-react';
 import { getDeviceFingerprint } from '../utils';
 import { LogoMark } from './Logo';
 import ReportsView from './ReportsView';
@@ -47,6 +47,123 @@ export default function Login({
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showAdminPassword, setShowAdminPassword] = useState(false);
+
+  // ---------- استعادة كلمة المرور ----------
+  // شاشة من خطوتين: تحقّق من الهوية والجهاز، ثم تعيين كلمة جديدة.
+  // التحقق كله في الخادم — القائمة المحلية لا يُعتمد عليها هنا.
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [recStep, setRecStep] = useState<1 | 2>(1);
+  const [recNationalId, setRecNationalId] = useState('');
+  const [recNewPass, setRecNewPass] = useState('');
+  const [recConfirmPass, setRecConfirmPass] = useState('');
+  const [recShowPass, setRecShowPass] = useState(false);
+  const [recVerifiedName, setRecVerifiedName] = useState('');
+  const [recError, setRecError] = useState('');
+  const [recSuccess, setRecSuccess] = useState('');
+  const [recLoading, setRecLoading] = useState(false);
+
+  const closeRecovery = () => {
+    setShowRecovery(false);
+    setRecStep(1);
+    setRecNationalId('');
+    setRecNewPass('');
+    setRecConfirmPass('');
+    setRecVerifiedName('');
+    setRecError('');
+    setRecSuccess('');
+  };
+
+  /** نداء الخادم لإجراء الاستعادة الذاتية — بلا no-cors ليُقرأ الردّ فعلاً */
+  const callRecovery = async (newPassword?: string) => {
+    const response = await fetch(adminConfig.syncUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'resetPasswordSelf',
+        nationalId: recNationalId.trim(),
+        deviceId: getDeviceFingerprint(),
+        newPassword: newPassword
+      })
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const text = await response.text();
+    if (!text || text.trim().startsWith('<')) throw new Error('INVALID_RESPONSE');
+    return text.trim();
+  };
+
+  /** الخطوة الأولى: التحقق من الهوية والجهاز بلا كتابة أي شيء */
+  const handleRecoveryVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRecError('');
+
+    if (!navigator.onLine) {
+      setRecError('لا يمكن استعادة كلمة المرور والجهاز غير متصل بالإنترنت.');
+      return;
+    }
+    if (!adminConfig.syncUrl) {
+      setRecError('التطبيق غير مربوط بالسحابة. راجع المسؤول.');
+      return;
+    }
+    if (!recNationalId.trim()) {
+      setRecError('يرجى إدخال الرقم القومي.');
+      return;
+    }
+
+    setRecLoading(true);
+    try {
+      const text = await callRecovery();
+      if (text.startsWith('Verified:')) {
+        setRecVerifiedName(text.replace('Verified:', '').trim());
+        setRecStep(2);
+        logAction('طلب استعادة كلمة مرور', `الرقم القومي: ${recNationalId.trim()}`);
+      } else {
+        setRecError(text.replace(/^Error:\s*/, ''));
+        logAction('فشل التحقق لاستعادة كلمة المرور', `الرقم القومي: ${recNationalId.trim()} | ${text}`);
+      }
+    } catch (err: any) {
+      setRecError(
+        err.message === 'INVALID_RESPONSE'
+          ? 'رابط الشركة لا يؤدي إلى كود النظام. راجع المسؤول.'
+          : 'تعذر الاتصال بالخادم. تأكد من الإنترنت وحاول مجدداً.'
+      );
+    } finally {
+      setRecLoading(false);
+    }
+  };
+
+  /** الخطوة الثانية: تعيين كلمة المرور الجديدة */
+  const handleRecoverySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRecError('');
+
+    const pass = recNewPass.trim();
+    if (pass.length < 6) { setRecError('كلمة المرور يجب ألا تقل عن ٦ خانات.'); return; }
+    if (pass.startsWith('0')) { setRecError('كلمة المرور لا يمكن أن تبدأ بصفر.'); return; }
+    if (pass !== recConfirmPass.trim()) { setRecError('كلمتا المرور غير متطابقتين.'); return; }
+
+    setRecLoading(true);
+    try {
+      const text = await callRecovery(pass);
+      if (text.includes('Password Reset Successfully')) {
+        setRecSuccess('تم تغيير كلمة المرور بنجاح. يمكنك الدخول بها الآن.');
+        logAction('نجاح استعادة كلمة المرور', `الموظف: ${recVerifiedName}`);
+        // مزامنة فورية: النسخة المحلية ما زالت تحمل كلمة المرور القديمة
+        await onSync?.(undefined, true);
+        setNationalId(recNationalId.trim());
+        setTimeout(closeRecovery, 2200);
+      } else {
+        setRecError(text.replace(/^Error:\s*/, ''));
+      }
+    } catch (err: any) {
+      setRecError(
+        err.message === 'INVALID_RESPONSE'
+          ? 'رابط الشركة لا يؤدي إلى كود النظام. راجع المسؤول.'
+          : 'تعذر الاتصال بالخادم. تأكد من الإنترنت وحاول مجدداً.'
+      );
+    } finally {
+      setRecLoading(false);
+    }
+  };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -506,7 +623,88 @@ export default function Login({
               <button type="submit" disabled={isLoading} className="w-full bg-blue-600 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 text-sm">
                 <LogIn size={20} /> دخول
               </button>
+
+              <button
+                type="button"
+                onClick={() => { setShowRecovery(true); setRecNationalId(nationalId.trim()); }}
+                className="w-full text-center text-[11px] font-bold text-blue-400 py-2 rounded-xl cursor-pointer"
+              >
+                نسيت كلمة المرور؟
+              </button>
             </form>
+          )}
+
+          {/* ===== استعادة كلمة المرور ===== */}
+          {mode === 'login' && showRecovery && (
+            <div className="mt-4 p-4 rounded-2xl border border-blue-500/40 bg-blue-950/25 space-y-4">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="text-white text-sm font-black flex items-center gap-2">
+                    <KeyRound size={17} className="text-blue-400" />
+                    استعادة كلمة المرور
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-bold mt-1 leading-relaxed">
+                    {recStep === 1
+                      ? 'الاستعادة متاحة من هاتفك المسجّل فقط. إن كنت غيّرت هاتفك راجع المسؤول.'
+                      : `تم التحقق من هويتك: ${recVerifiedName}`}
+                  </p>
+                </div>
+                <button type="button" onClick={closeRecovery} className="text-slate-400 text-xs font-black px-2 py-1 rounded-lg cursor-pointer shrink-0">
+                  إغلاق
+                </button>
+              </div>
+
+              {recSuccess ? (
+                <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs font-bold">
+                  {recSuccess}
+                </div>
+              ) : recStep === 1 ? (
+                <form onSubmit={handleRecoveryVerify} className="space-y-3">
+                  <input
+                    type="text" placeholder="الرقم القومي" maxLength={14} inputMode="numeric"
+                    value={recNationalId}
+                    onChange={e => setRecNationalId(e.target.value.replace(/\D/g, ''))}
+                    className={inputClasses}
+                  />
+                  {recError && (
+                    <div className="p-3 rounded-xl bg-red-950/40 border border-red-500/40 text-red-300 text-[11px] font-bold flex gap-2 items-start">
+                      <AlertCircle size={15} className="shrink-0 mt-0.5" /><span>{recError}</span>
+                    </div>
+                  )}
+                  <button type="submit" disabled={recLoading} className="w-full bg-blue-600 text-white font-black py-3 rounded-2xl flex items-center justify-center gap-2 text-xs">
+                    {recLoading ? <Loader2 className="animate-spin" size={17} /> : <Smartphone size={17} />}
+                    {recLoading ? 'جارٍ التحقق…' : 'تحقّق من هويتي'}
+                  </button>
+                </form>
+              ) : (
+                <form onSubmit={handleRecoverySubmit} className="space-y-3">
+                  <div className="relative">
+                    <input
+                      type={recShowPass ? 'text' : 'password'} placeholder="كلمة المرور الجديدة" minLength={6}
+                      value={recNewPass} onChange={e => setRecNewPass(e.target.value)}
+                      className={`${inputClasses} pl-12`}
+                    />
+                    <button type="button" onClick={() => setRecShowPass(!recShowPass)} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 transition-colors">
+                      {recShowPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                  <input
+                    type={recShowPass ? 'text' : 'password'} placeholder="تأكيد كلمة المرور الجديدة" minLength={6}
+                    value={recConfirmPass} onChange={e => setRecConfirmPass(e.target.value)}
+                    className={inputClasses}
+                  />
+                  {recError && (
+                    <div className="p-3 rounded-xl bg-red-950/40 border border-red-500/40 text-red-300 text-[11px] font-bold flex gap-2 items-start">
+                      <AlertCircle size={15} className="shrink-0 mt-0.5" /><span>{recError}</span>
+                    </div>
+                  )}
+                  <button type="submit" disabled={recLoading} className="w-full bg-emerald-600 text-white font-black py-3 rounded-2xl flex items-center justify-center gap-2 text-xs">
+                    {recLoading ? <Loader2 className="animate-spin" size={17} /> : <KeyRound size={17} />}
+                    {recLoading ? 'جارٍ الحفظ…' : 'تعيين كلمة المرور'}
+                  </button>
+                </form>
+              )}
+            </div>
           )}
 
           {/* ===== دخول المسؤول ===== */}

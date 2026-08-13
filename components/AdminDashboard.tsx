@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import { Branch, AttendanceRecord, AppConfig, User, Job, ReportAccount, VisitPlan } from '../types';
-import { MapPin, Table, Trash2, Shield, CloudUpload, Briefcase, RotateCcw, Globe, Users, Plus, FileSpreadsheet, Download, Share2, Smartphone, RefreshCw, Edit2, Check, X, Unlink, Key, Lock, Eye, EyeOff, Clock, Monitor, UserCheck, Calendar, Navigation, ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
+import { MapPin, Table, Trash2, Shield, CloudUpload, Briefcase, RotateCcw, Globe, Users, Plus, FileSpreadsheet, Download, Share2, Smartphone, RefreshCw, Edit2, Check, X, Unlink, Key, Lock, Eye, EyeOff, Clock, Monitor, UserCheck, Calendar, Navigation, ArrowUp, ArrowDown, GripVertical, KeyRound, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ReportsView from './ReportsView';
 
@@ -36,6 +36,60 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editUserData, setEditUserData] = useState<Partial<User>>({});
+  const [resettingUserId, setResettingUserId] = useState<string | null>(null);
+
+  /**
+   * إعادة تعيين كلمة مرور موظف.
+   *
+   * يستدعي إجراء resetUserPassword الضيّق في الخادم، لا updateSystem —
+   * فلا يُمسح شيت الموظفين ولا يُحذف من سجّل بعد آخر مزامنة.
+   * وبلا no-cors ليُقرأ ردّ الخادم فعلاً ويُعرض سبب الفشل إن وقع.
+   */
+  const resetUserPassword = async (user: User) => {
+    if (!config.syncUrl) { alert('يرجى ضبط رابط المزامنة أولاً'); return; }
+
+    const newPass = prompt(
+      `إعادة تعيين كلمة مرور: ${user.fullName}\n\n` +
+      `اكتب كلمة المرور الجديدة (٦ خانات فأكثر، ولا تبدأ بصفر):`
+    );
+    if (newPass === null) return;
+
+    const pass = newPass.trim();
+    if (pass.length < 6) { alert('كلمة المرور يجب ألا تقل عن ٦ خانات.'); return; }
+    if (pass.startsWith('0')) { alert('كلمة المرور لا يمكن أن تبدأ بصفر.'); return; }
+
+    setResettingUserId(user.id);
+    try {
+      const response = await fetch(config.syncUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'resetUserPassword',
+          adminUsername: config.adminUsername,
+          adminPassword: config.adminPassword,
+          userId: user.id,
+          nationalId: user.nationalId,
+          newPassword: pass
+        })
+      });
+
+      const text = (await response.text()).trim();
+
+      if (text.includes('Password Reset Successfully')) {
+        alert(`تم تغيير كلمة مرور ${user.fullName} بنجاح.\n\nسلّمها له ليدخل بها.`);
+        logAction('إعادة تعيين كلمة مرور موظف', `الموظف: ${user.fullName}`);
+        onRefresh?.();
+      } else {
+        alert('تعذّر تغيير كلمة المرور:\n\n' + text.replace(/^Error:\s*/, ''));
+        logAction('فشل إعادة تعيين كلمة مرور', `الموظف: ${user.fullName} | ${text}`);
+      }
+    } catch (err) {
+      alert('تعذر الاتصال بالخادم. تأكد من الإنترنت وحاول مجدداً.');
+      logAction('فشل إعادة تعيين كلمة مرور', `الموظف: ${user.fullName} | خطأ اتصال`);
+    } finally {
+      setResettingUserId(null);
+    }
+  };
 
   const [newRepUser, setNewRepUser] = useState('');
   const [newRepPass, setNewRepPass] = useState('');
@@ -582,9 +636,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     checkInTime: normalizeToTimeInput(user.checkInTime),
                                     checkOutTime: normalizeToTimeInput(user.checkOutTime),
                                     allowedDeviceCount: user.allowedDeviceCount || 1
-                                  }); 
+                                  });
                                 }} className="text-blue-400 hover:bg-blue-900/20 p-1.5 rounded"><Edit2 size={16}/></button>
-                                
+
+                                <button
+                                  onClick={() => resetUserPassword(user)}
+                                  disabled={resettingUserId === user.id}
+                                  className="text-amber-400 hover:bg-amber-900/20 p-1.5 rounded cursor-pointer disabled:opacity-50"
+                                  title="إعادة تعيين كلمة المرور"
+                                >
+                                  {resettingUserId === user.id
+                                    ? <Loader2 size={16} className="animate-spin" />
+                                    : <KeyRound size={16} />}
+                                </button>
+
                                 {deviceCount > 0 && (
                                   <button onClick={() => {
                                     if(confirm('هل أنت متأكد من فك ارتباط جميع الأجهزة لهذا الموظف؟')) {
