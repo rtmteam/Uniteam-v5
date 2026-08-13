@@ -22,6 +22,15 @@ function doPost(e) {
   // 1. تحديث النظام (Update System Configuration)
   // ======================================================
   if (data.action === 'updateSystem') {
+    // ------------------------------------------------------
+    // مصادقة إلزامية قبل أي كتابة.
+    // بدونها كان أي شخص يعرف الرابط (وهو مشحون في حزمة JS العلنية)
+    // يستطيع استبدال كلمة مرور المسؤول أو مسح شيت الموظفين بطلب واحد.
+    // ------------------------------------------------------
+    if (!isAdminRequest(ss, data.adminUsername, data.adminPassword)) {
+      return ContentService.createTextOutput("Error: Unauthorized. Admin credentials required.");
+    }
+
     var lock = LockService.getScriptLock();
     try {
       lock.waitLock(30000);
@@ -69,6 +78,22 @@ function doPost(e) {
       // 3. تحديث الموظفين
       if (data.users) {
         var userSheet = getOrCreateSheet(ss, "Users");
+
+        // قبل المسح: نحتفظ بآخر موقع وآخر تحديث لكل موظف بمفتاح الرقم القومي.
+        // هذان العمودان يكتبهما الخادم وحده عند التسجيل ولا يعرفهما التطبيق،
+        // فتصفيرهما كان يمسح ذاكرة «كشف الانتقال المستحيل» عند كل مزامنة.
+        var previousState = {};
+        var oldRows = userSheet.getDataRange().getValues();
+        for (var pr = 1; pr < oldRows.length; pr++) {
+          var oldNid = oldRows[pr][2] ? oldRows[pr][2].toString().trim() : "";
+          if (oldNid) {
+            previousState[oldNid] = {
+              lastUpdate: oldRows[pr][9] || "",
+              lastGPS: oldRows[pr][13] || ""
+            };
+          }
+        }
+
         userSheet.clear();
         userSheet.appendRow(["ID", "Full Name", "National ID", "Serial Number", "Job Title", "Device ID", "Password", "Default Branch", "Reg Date", "Last Update", "CheckIn", "CheckOut", "AllowedDeviceCount", "LastGPS"]);
         data.users.forEach(function(u) {
@@ -79,21 +104,24 @@ function doPost(e) {
             deviceStorage = u.deviceId.toString();
           }
 
+          var nidKey = u.nationalId ? u.nationalId.toString().trim() : "";
+          var prev = previousState[nidKey] || { lastUpdate: "", lastGPS: "" };
+
           userSheet.appendRow([
-            u.id ? u.id.toString() : "", 
-            u.fullName ? u.fullName.toString() : "", 
-            u.nationalId ? u.nationalId.toString() : "", 
-            u.serialNumber ? u.serialNumber.toString() : "", 
-            u.jobTitle ? u.jobTitle.toString() : "", 
-            deviceStorage, 
-            u.password ? u.password.toString() : "", 
-            u.defaultBranchId ? u.defaultBranchId.toString() : "", 
+            u.id ? u.id.toString() : "",
+            u.fullName ? u.fullName.toString() : "",
+            u.nationalId ? u.nationalId.toString() : "",
+            u.serialNumber ? u.serialNumber.toString() : "",
+            u.jobTitle ? u.jobTitle.toString() : "",
+            deviceStorage,
+            u.password ? u.password.toString() : "",
+            u.defaultBranchId ? u.defaultBranchId.toString() : "",
             u.registrationDate ? u.registrationDate : new Date(),
-            new Date(),
+            prev.lastUpdate || new Date(),
             u.checkInTime || "09:00",
             u.checkOutTime || "17:00",
             u.allowedDeviceCount || 1,
-            "" // LastGPS init
+            prev.lastGPS
           ]);
         });
       }
@@ -203,7 +231,9 @@ function doPost(e) {
       // د. منطق التحقق من الموقع والمسافة
       var userLat = parseFloat(data.latitude);
       var userLng = parseFloat(data.longitude);
-      var isOutDoor = targetBranch.name.trim().toLowerCase() === "out door";
+      // حارس: فرع بلا اسم كان يرمي استثناءً هنا فيتحوّل إلى رسالة عامة غامضة
+      var targetBranchName = targetBranch.name ? targetBranch.name.toString().trim() : "";
+      var isOutDoor = targetBranchName.toLowerCase() === "out door";
       var reason = data.reason ? data.reason.trim() : "";
       var now = new Date();
 
@@ -253,17 +283,29 @@ function doPost(e) {
       // نستخدم الرقم التسلسلي من شيت المستخدمين لضمان الدقة
       var sn = userRows[userRowIndex-1][3];
 
+      // كود الفرع يُؤخذ من إعدادات الخادم لا من العميل — العميل يرسل
+      // معرّف الفرع فقط، والكود يُحلّ هنا من قائمة الفروع المعتمدة.
+      var targetBranchCode = targetBranch.code ? targetBranch.code.toString().trim() : "";
+
+      // حارس: إن لم يُدرج العمود يدوياً بعد، نرفض الكتابة بدل أن نكتب
+      // صفوفاً مزاحة عموداً واحداً يستحيل تصحيحها لاحقاً.
+      var columnError = assertAttendanceColumns(attSheet);
+      if (columnError !== "") {
+        return ContentService.createTextOutput(columnError);
+      }
+
       attSheet.appendRow([
-        now, 
+        now,
         data.userName,
-        sn || "", 
+        sn || "",
         data.userJob,
-        targetBranch.name, 
+        targetBranchCode,
+        targetBranchName,
         data.type,
-        now.toISOString(), 
+        now.toISOString(),
         data.latitude + "," + data.longitude,
         reason,
-        data.timeDiff || "" 
+        data.timeDiff || ""
       ]);
       
       // تحديث آخر موقع ووقت للمستخدم
@@ -400,6 +442,32 @@ function doPost(e) {
       lock.releaseLock();
     }
   }
+
+  // إجراء غير معروف: ردّ صريح بدل ردّ فارغ يفسّره التطبيق كـ«كود سيرفر قديم»
+  return ContentService.createTextOutput("Error: Unknown action '" + (data.action || "") + "'.");
+}
+
+/**
+ * التحقق من أن الطلب صادر عن المسؤول.
+ * يقرأ admin_user/admin_pass من شيت Config.
+ * ملاحظة: إن لم تكن مضبوطة بعد (شيت جديد) يُسمح بالطلب الأول لتهيئتها،
+ * وإلا تعذّر ضبط النظام من الصفر.
+ */
+function isAdminRequest(ss, username, password) {
+  var configSheet = getOrCreateSheet(ss, "Config");
+  var rows = configSheet.getDataRange().getValues();
+  var adminUser = "", adminPass = "";
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i][0] === "admin_user") adminUser = rows[i][1] ? rows[i][1].toString() : "";
+    if (rows[i][0] === "admin_pass") adminPass = rows[i][1] ? rows[i][1].toString() : "";
+  }
+
+  // تهيئة أولى: لا مسؤول مضبوط بعد
+  if (adminUser === "" && adminPass === "") return true;
+
+  var u = username ? username.toString() : "";
+  var p = password ? password.toString() : "";
+  return u === adminUser && p === adminPass;
 }
 
 // ======================================================
@@ -529,10 +597,13 @@ function doGet(e) {
     var pass = e.parameter.pass;
     var configSheet = getOrCreateSheet(ss, "Config");
     var configRows = configSheet.getDataRange().getValues();
-    var adminUser = "", adminPass = "", allSystemJobs = [], holidays = [], jobsData = [];
+    var adminUser = "", adminPass = "", allSystemJobs = [], holidays = [], jobsData = [], branches = [];
     for (var c = 1; c < configRows.length; c++) {
       if (configRows[c][0] === "admin_user") adminUser = configRows[c][1];
       if (configRows[c][0] === "admin_pass") adminPass = configRows[c][1];
+      if (configRows[c][0] === "branches") {
+        try { branches = JSON.parse(configRows[c][1]); } catch(e) { branches = []; }
+      }
       if (configRows[c][0] === "holidays") {
         try { holidays = JSON.parse(configRows[c][1]); } catch(e) {}
       }
@@ -595,9 +666,14 @@ function doGet(e) {
 
       if (include) {
         filteredRecords.push({
-          date: attRows[j][0], name: empName, serialNumber: attRows[j][2], job: jobName,
-          branch: attRows[j][4], type: attRows[j][5], time: attRows[j][6], gps: attRows[j][7],
-          reason: attRows[j][8] || "", timeDiff: attRows[j][9] || ""
+          date: attRows[j][0], name: empName,
+          serialNumber: attRows[j][2], job: jobName,
+          // العمود الخامس (فهرس 4) هو Branch Code — يسبق اسم الفرع.
+          // فارغ في الصفوف المسجّلة قبل إضافة العمود، وعندها يستنتجه
+          // التطبيق من اسم الفرع فلا ينكسر تقرير قديم.
+          branchCode: attRows[j][4] || "",
+          branch: attRows[j][5], type: attRows[j][6], time: attRows[j][7], gps: attRows[j][8],
+          reason: attRows[j][9] || "", timeDiff: attRows[j][10] || ""
         });
       }
     }
@@ -622,10 +698,26 @@ function doGet(e) {
       }
 
       if (includeUser) {
+        // عمود "Default Branch" يخزّن معرّف الفرع لا اسمه.
+        // نحلّه هنا داخل الخادم حيث قائمة الفروع متاحة، فيصل التقرير
+        // اسماً مقروءاً وكوداً جاهزاً بدل معرّف عشوائي.
+        var uBranchStr = uBranch ? uBranch.toString().trim() : "";
+        var matchedBranch = null;
+        for (var mb = 0; mb < branches.length; mb++) {
+          var bId = branches[mb].id ? branches[mb].id.toString().trim() : "";
+          var bName = branches[mb].name ? branches[mb].name.toString().trim() : "";
+          if (uBranchStr && (bId === uBranchStr || bName === uBranchStr)) {
+            matchedBranch = branches[mb];
+            break;
+          }
+        }
+
         authorizedUsers.push({
           fullName: uName,
           jobTitle: uJob,
-          defaultBranch: uBranch,
+          defaultBranch: matchedBranch ? (matchedBranch.name || uBranchStr) : uBranchStr,
+          defaultBranchId: uBranchStr,
+          branchCode: matchedBranch && matchedBranch.code ? matchedBranch.code.toString() : "",
           serialNumber: uSerial
         });
       }
@@ -647,8 +739,17 @@ function doGet(e) {
         if (allowedEmployees.indexOf(planUserName) !== -1) includePlan = true;
       } else {
         // Find user job to see if plan should be included
-        var user = authorizedUsers.find(function(u) { return u.fullName === planUserName || u.serialNumber === planUserId; });
-        if (user && allowedJobs.indexOf(user.jobTitle) !== -1) includePlan = true;
+        // ملاحظة: كان الاسم هنا `user` فيظلّل `var user = e.parameter.user`
+        // في نفس نطاق الدالة (رفع `var`). أُعيدت التسمية منعاً لانفجاره لاحقاً.
+        var planOwner = null;
+        for (var po = 0; po < authorizedUsers.length; po++) {
+          var cand = authorizedUsers[po];
+          if (cand.fullName === planUserName || (cand.serialNumber && cand.serialNumber.toString() === planUserId)) {
+            planOwner = cand;
+            break;
+          }
+        }
+        if (planOwner && allowedJobs.indexOf(planOwner.jobTitle) !== -1) includePlan = true;
       }
 
       if (includePlan) {
@@ -666,10 +767,16 @@ function doGet(e) {
       records: filteredRecords,
       users: authorizedUsers,
       jobs: jobsData,
+      branches: branches,
       holidays: holidays,
       visitPlans: visitPlans
     })).setMimeType(ContentService.MimeType.JSON);
   }
+
+  // إجراء غير معروف: ردّ صريح بدل ردّ فارغ
+  return ContentService.createTextOutput(JSON.stringify({
+    error: "Unknown action '" + (action || "") + "'."
+  })).setMimeType(ContentService.MimeType.JSON);
 }
 
 function getOrCreateSheet(ss, name) {
@@ -679,7 +786,7 @@ function getOrCreateSheet(ss, name) {
     if (name === "Users") {
       sheet.appendRow(["ID", "Full Name", "National ID", "Serial Number", "Job Title", "Device ID", "Password", "Default Branch", "Reg Date", "Last Update", "CheckIn", "CheckOut", "AllowedDeviceCount", "LastGPS"]);
     } else if (name === "Attendance") {
-      sheet.appendRow(["Log Date", "Name", "Serial Number", "Job", "Branch", "Type", "ISO Time", "GPS", "Reason", "Time Diff"]);
+      sheet.appendRow(["Log Date", "Name", "Serial Number", "Job", "Branch Code", "Branch", "Type", "ISO Time", "GPS", "Reason", "Time Diff"]);
     } else if (name === "ReportAccounts") {
       sheet.appendRow(["ID", "Username", "Password", "Allowed Jobs", "Allowed Employees"]);
     } else if (name === "AuditLog") {
@@ -688,15 +795,42 @@ function getOrCreateSheet(ss, name) {
       sheet.appendRow(["ID", "User ID", "User Name", "Branch ID", "Branch Name", "Date"]);
     }
   } else {
-    // تحديث الشيت الموجود لإضافة العمود الجديد إذا لم يكن موجوداً
+    var lastCol, headers;
     if (name === "Users") {
-       var lastCol = sheet.getLastColumn();
-       var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-       // التأكد من وجود LastGPS
+       lastCol = sheet.getLastColumn();
+       headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+       // التأكد من وجود LastGPS — يُضاف في النهاية فلا يزيح فهرساً
        if (headers.indexOf("LastGPS") === -1) {
           sheet.getRange(1, lastCol + 1).setValue("LastGPS");
        }
     }
+
+    // ملاحظة مقصودة: لا ترحيل تلقائي لعمود "Branch Code" في شيت Attendance.
+    // موضعه المطلوب هو العمود الخامس (قبل Branch) لا النهاية، وإدراج عمود
+    // في الوسط برمجياً يزيح بيانات آلاف الصفوف القائمة. الإدراج يدوي،
+    // ودالة assertAttendanceColumns أدناه تتحقّق من إتمامه.
   }
   return sheet;
+}
+
+/**
+ * تحقّق من أن شيت Attendance يحمل الترتيب المتوقّع للأعمدة.
+ *
+ * هذا الملف يقرأ الأعمدة بفهارس ثابتة (attRows[j][5] للفرع مثلاً)،
+ * فإن لم يُدرج عمود "Branch Code" يدوياً في الموضع الخامس ستُقرأ كل
+ * البيانات مزاحة عموداً واحداً: الفرع يظهر مكان الكود، والنوع مكان الفرع…
+ *
+ * تُرجع رسالة خطأ عند الخلل، أو "" إن كان الترتيب سليماً.
+ */
+function assertAttendanceColumns(sheet) {
+  var lastCol = sheet.getLastColumn();
+  if (lastCol === 0) return "";
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var fifth = headers[4] ? headers[4].toString().trim() : "";
+  if (fifth !== "Branch Code") {
+    return "Error: عمود 'Branch Code' مفقود من شيت Attendance. " +
+           "أدرجه يدوياً ليصبح العمود الخامس (قبل Branch) ثم أعد المحاولة. " +
+           "العمود الخامس حالياً: '" + fifth + "'";
+  }
+  return "";
 }

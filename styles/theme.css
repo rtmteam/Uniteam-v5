@@ -600,27 +600,34 @@ html, body {
   font-size: 11px; line-height: 1.7; color: var(--on-dark-2);
 }
 
-/* ---------- هاتف: كل التبويبات في شاشة واحدة بلا سحب ----------
-   كانت شريطاً أفقياً قابلاً للتمرير، فلا يرى الموظف إلا التبويب الأول
-   ولا يعرف أن خلفه «حساب جديد» و«الإدارة» و«التقارير». */
+/* ---------- هاتف: التبويبات الثلاثة ممتدة بانتظام وتتوسط الشاشة ---------- */
 @media (max-width: 820px) {
   .login-shell { grid-template-columns: minmax(0, 1fr); }
 
   .login-side { padding: 14px 12px; }
-  .login-side__head { padding: 2px 0 12px; }
+  .login-side__head { padding: 2px 0 12px; text-align: center; }
   /* الشعار يُمرَّر بمقاس ثابت من المكوّن، فيلزم !important لتصغيره هنا */
   .login-side__head img { width: 84px !important; height: 84px !important; }
   .login-side__sub { font-size: 10px; margin-top: 6px; }
 
   .login-side__nav {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    justify-content: center;
+    /* stretch لا center: مع center يأخذ كل تبويب ارتفاع محتواه، فـ«الإدارة»
+       (كلمة واحدة) تخرج أقصر من «دخول الموظف» (كلمتان تلتفّان لسطرين)
+       وتبدو الصفّة غير مستوية. stretch يوحّد الارتفاع على أطولها. */
+    align-items: stretch;
     gap: 6px;
     overflow: visible;
+    width: 100%;
+    max-width: 480px;
+    margin: 0 auto;
   }
   .login-tab {
     flex-direction: column;
     justify-content: center;
+    align-items: center;
     gap: 5px;
     padding: 10px 4px;
     text-align: center;
@@ -631,9 +638,17 @@ html, body {
     overflow-wrap: anywhere;
   }
   .login-tab__icon { width: 19px; height: 19px; }
+
+  /* قسم التقارير يمتد بكامل العرض أسفل التبويبات الثلاثة المتواسطة */
+  .login-side__nav > div {
+    grid-column: 1 / -1;
+  }
 }
 
-/* شاشات ضيّقة جداً: عمودان بدل أربعة حتى لا يتقطّع النص */
+/* شاشات ضيّقة جداً: عمودان بدل ثلاثة حتى لا يتقطّع النص.
+   على 320px يصير عرض التبويب في ثلاثة أعمدة ~93px فتلتفّ «دخول الموظف»
+   إلى أسطر مبتورة. عمودان يمنحان ~146px فيبقى النص مقروءاً.
+   ملاحظة: التبويبات ثلاثة، فالثالث ينفرد في صفّه الثاني. */
 @media (max-width: 340px) {
   .login-side__nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
