@@ -249,9 +249,13 @@
   cursor: pointer; position: relative;
   transition: background .15s ease, color .15s ease;
 }
-.admin-nav-item:hover { background: rgba(255, 255, 255, .06); color: var(--on-dark); }
+/* الحارس مقصود — انظر شرح العلوق عند .login-tab:hover أسفل الملف */
+@media (hover: hover) and (pointer: fine) {
+  .admin-nav-item:hover { background: rgba(255, 255, 255, .06); color: var(--on-dark); }
+}
 .admin-nav-item__icon { flex: none; }
-.admin-nav-item--active {
+.admin-nav-item--active,
+.admin-nav-item--active:hover {
   background: var(--grad-brand);
   color: #fff;
   box-shadow: var(--glow-brand);
@@ -584,9 +588,19 @@ html, body {
   cursor: pointer;
   transition: background .16s ease, color .16s ease, transform .08s ease;
 }
-.login-tab:hover { background: rgba(255,255,255,.06); color: var(--on-dark); }
+/* الحارس ضروري لا تجميلي.
+   `.login-tab:hover` نوعيتها 0-2-0 و`.login-tab--active` نوعيتها 0-1-0،
+   فالمرور يغلب التفعيل مهما كان ترتيب القواعد. وعلى الهاتف يبقى العنصر
+   عالقاً في حالة :hover بعد اللمس حتى تُلمس نقطة أخرى، فكانت التعبئة
+   الزرقاء تختفي ولا يعرف الموظف على أي تبويب هو واقف.
+   (hover: hover) يمنع تطبيق القاعدة على شاشات اللمس أصلاً. */
+@media (hover: hover) and (pointer: fine) {
+  .login-tab:hover { background: rgba(255,255,255,.06); color: var(--on-dark); }
+}
 .login-tab:active { transform: scale(.985); }
-.login-tab--active {
+/* :hover مضافة كشبكة أمان — التفعيل يغلب المرور على الكمبيوتر أيضاً */
+.login-tab--active,
+.login-tab--active:hover {
   background: var(--grad-brand); color: #fff;
   box-shadow: var(--glow-brand);
   border-color: rgba(255,255,255,.14);
