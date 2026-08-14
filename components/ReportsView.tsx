@@ -14,7 +14,13 @@ interface ReportsViewProps {
   autoLoginAdmin?: boolean;
 }
 
-const MultiSelect = ({ label, options, selected, onToggle, placeholder, icon: Icon }: { label: string, options: string[], selected: string[], onToggle: (val: string) => void, placeholder: string, icon: any }) => {
+/**
+ * @param aliases نصّ بحث إضافي لكل خيار (كود الفرع مثلاً).
+ *   البحث يطابق الخيار **أو** رديفه، لكن القيمة المختارة تبقى الخيار نفسه —
+ *   فلا يتغيّر شيء في منطق التصفية ولا في التقارير المُصدَّرة.
+ *   اختيارية، فبقية استعمالات المكوّن لا تتأثر.
+ */
+const MultiSelect = ({ label, options, selected, onToggle, placeholder, icon: Icon, aliases }: { label: string, options: string[], selected: string[], onToggle: (val: string) => void, placeholder: string, icon: any, aliases?: Record<string, string> }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -29,7 +35,13 @@ const MultiSelect = ({ label, options, selected, onToggle, placeholder, icon: Ic
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const filtered = options.filter(o => o.toLowerCase().includes(search.toLowerCase()));
+  const q = search.trim().toLowerCase();
+  const filtered = options.filter(o => {
+    if (q === '') return true;
+    if (o.toLowerCase().includes(q)) return true;
+    const alias = aliases?.[o];
+    return !!alias && alias.toLowerCase().includes(q);
+  });
 
   return (
     <div className="relative space-y-1 w-full text-right" ref={wrapperRef}>
@@ -52,7 +64,7 @@ const MultiSelect = ({ label, options, selected, onToggle, placeholder, icon: Ic
           <div className="relative mb-2">
             <input 
               type="text" 
-              placeholder="بحث..." 
+              placeholder={aliases ? "بحث بالاسم أو الكود..." : "بحث..."}
               className="w-full bg-slate-900 border border-slate-700 text-white px-5 md:px-8 py-2 rounded-lg text-[10px] outline-none focus:border-blue-500"
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -69,10 +81,17 @@ const MultiSelect = ({ label, options, selected, onToggle, placeholder, icon: Ic
                   key={opt}
                   type="button"
                   onClick={() => onToggle(opt)}
-                  className={`w-full text-right px-3 py-2 rounded-lg text-[10px] font-bold transition-all flex items-center justify-between ${selected.includes(opt) ? 'bg-blue-600 text-white' : 'hover:bg-slate-700 text-slate-300'}`}
+                  className={`w-full text-right px-3 py-2 rounded-lg text-[10px] font-bold transition-all flex items-center justify-between gap-2 ${selected.includes(opt) ? 'bg-blue-600 text-white' : 'hover:bg-slate-700 text-slate-300'}`}
                 >
-                  <span>{opt}</span>
-                  {selected.includes(opt) && <Check size={12} />}
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span className="truncate">{opt}</span>
+                    {aliases?.[opt] && (
+                      <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded shrink-0 ${selected.includes(opt) ? 'bg-white/20 text-white' : 'bg-slate-900 text-amber-400'}`}>
+                        {aliases[opt]}
+                      </span>
+                    )}
+                  </span>
+                  {selected.includes(opt) && <Check size={12} className="shrink-0" />}
                 </button>
               ))
             )}
@@ -802,7 +821,28 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
      return Array.from(unique.values()).sort();
   }, [records, authorizedUsers]);
 
-  const filteredRecords = useMemo(() => records.filter(r => { 
+  /**
+   * خريطة: اسم الفرع ← كوده.
+   * تُغذّي البحث في فلتر الفروع، فيجد الموظف الفرع باسمه أو بكود توكيله.
+   * تُبنى من قائمة الفروع المعتمدة، وتُكمَّل من السجلات للفروع التي تحمل
+   * كوداً في سجلّ الحضور ولم تعد موجودة في القائمة.
+   */
+  const branchCodeByName = useMemo(() => {
+    const map: Record<string, string> = {};
+    fetchedBranches.forEach(b => {
+      const name = b?.name?.toString().trim();
+      const code = b?.code?.toString().trim();
+      if (name && code) map[name] = code;
+    });
+    records.forEach(r => {
+      const name = r?.branch?.toString().trim();
+      const code = r?.branchCode?.toString().trim();
+      if (name && code && !map[name]) map[name] = code;
+    });
+    return map;
+  }, [fetchedBranches, records]);
+
+  const filteredRecords = useMemo(() => records.filter(r => {
     if (!r.date) return false;
     const d = new Date(r.date);
     if (isNaN(d.getTime())) return false;
@@ -971,13 +1011,14 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
             icon={UserIcon} 
           />
 
-          <MultiSelect 
-            label="تصفية بالفروع" 
-            options={availableBranches} 
-            selected={selectedBranches} 
-            onToggle={toggleBranchSelection} 
-            placeholder="الكل" 
-            icon={MapPin} 
+          <MultiSelect
+            label="تصفية بالفروع"
+            options={availableBranches}
+            selected={selectedBranches}
+            onToggle={toggleBranchSelection}
+            placeholder="الكل"
+            icon={MapPin}
+            aliases={branchCodeByName}
           />
 
           <div className="flex items-end">

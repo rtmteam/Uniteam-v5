@@ -83,6 +83,15 @@ public class MainActivity extends BridgeActivity {
      *
      * نُعيد WindowInsetsCompat.CONSUMED حتى لا تصل الحواف إلى الـ WebView مرة
      * أخرى، فتظلّ env(safe-area-inset-*) في CSS أصفاراً ولا يتراكم الحشو.
+     *
+     * ---- لوحة المفاتيح ----
+     * لأننا نستهلك الحواف، صار لزاماً علينا أن نتدبّر لوحة المفاتيح بأنفسنا:
+     * لا شيء بعدنا يراها. ومع فرض العرض من حافة إلى حافة لم يعد adjustResize
+     * يقلّص النافذة تلقائياً كما كان.
+     *
+     * لذا الحشو السفلي = الأكبر بين شريط التنقّل ولوحة المفاتيح. «الأكبر» لا
+     * «المجموع»: اللوحة تغطّي شريط التنقّل حين تظهر، فجمعهما يخلّف فراغاً
+     * بارتفاع الشريط فوق اللوحة.
      */
     private void applySystemBarInsets() {
         View target = findViewById(android.R.id.content);
@@ -101,9 +110,14 @@ public class MainActivity extends BridgeActivity {
             Insets bars = windowInsets.getInsets(
                 WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
             );
-            v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            Insets ime = windowInsets.getInsets(WindowInsetsCompat.Type.ime());
+
+            int bottom = Math.max(bars.bottom, ime.bottom);
+
+            v.setPadding(bars.left, bars.top, bars.right, bottom);
             android.util.Log.i("Uniteam",
-                "insets applied top=" + bars.top + " bottom=" + bars.bottom +
+                "insets applied top=" + bars.top + " bottom=" + bottom +
+                " (bars=" + bars.bottom + " ime=" + ime.bottom + ")" +
                 " left=" + bars.left + " right=" + bars.right);
             return WindowInsetsCompat.CONSUMED;
         });

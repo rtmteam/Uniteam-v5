@@ -57,6 +57,21 @@ def main() -> int:
     if 'android:foregroundServiceType' not in content:
         pass  # لا نحتاج خدمة أمامية - المراقبة تتم والتطبيق مفتوح فقط
 
+    # ---- سلوك لوحة المفاتيح ----
+    # بدون تحديد صريح يستنتج النظام الوضع، وكان يستنتج adjustResize لأن
+    # الـ WebView قابل للتمرير. لكن مع فرض العرض من حافة إلى حافة على
+    # أندرويد 15+ لم يعد الاستنتاج موثوقاً، فيبقى حقل الكتابة تحت اللوحة.
+    # التحديد الصريح يزيل الاعتماد على الاستنتاج، ويعمل مع معالجة حواف
+    # ime في MainActivity لا بديلاً عنها.
+    soft_input = 'android:windowSoftInputMode="adjustResize"'
+    if soft_input in content:
+        soft_input_state = "موجود"
+    else:
+        # يُضاف على وسم النشاط الذي يحمل MainActivity وحده
+        pattern = re.compile(r'(<activity\b[^>]*android:name="[^"]*MainActivity")')
+        content, n = pattern.subn(r'\1\n            ' + soft_input, content, count=1)
+        soft_input_state = "أضيف" if n else "تعذّر - لم يُعثر على وسم MainActivity"
+
     if content != original:
         MANIFEST.write_text(content, encoding="utf-8")
 
@@ -68,6 +83,8 @@ def main() -> int:
     for p in skipped:
         print(f"  [موجودة] {p}")
 
+    print(f"  [{soft_input_state}] windowSoftInputMode=adjustResize")
+
     # تحقق نهائي
     final = MANIFEST.read_text(encoding="utf-8")
     missing = [p for p, _ in PERMISSIONS if p not in final]
@@ -75,6 +92,10 @@ def main() -> int:
         print("\n[فشل] صلاحيات ناقصة بعد التعديل:")
         for p in missing:
             print(f"  - {p}")
+        return 1
+
+    if soft_input not in final:
+        print("\n[فشل] لم يُضبط windowSoftInputMode - سيغطّي الكيبورد حقول الكتابة")
         return 1
 
     count = len(re.findall(r"<uses-permission", final))

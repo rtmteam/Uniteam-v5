@@ -720,9 +720,6 @@ export default function Login({
               <button type="submit" disabled={isLoading} className="w-full bg-blue-600 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2">
                 <ShieldAlert size={20} /> دخول لوحة التحكم
               </button>
-              <button type="button" onClick={() => setMode('login')} className="w-full text-slate-500 text-[11px] font-black py-2 hover:text-slate-300 transition-colors">
-                العودة لدخول الموظف
-              </button>
             </form>
           )}
           </>
