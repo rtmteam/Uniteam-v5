@@ -2,9 +2,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { User, Branch, AttendanceRecord, AppConfig, Job, ReportAccount, VisitPlan } from './types';
 import Login from './components/Login';
-import AdminDashboard from './components/AdminDashboard';
+// الإدارة والتقارير تُحمَّل عند الحاجة فقط — انظر LazyScreens.tsx
+import { LazyAdminDashboard, LazyReportsView, ScreenLoader } from './components/LazyScreens';
 import UserDashboard from './components/UserDashboard';
-import ReportsView from './components/ReportsView';
 import { ShieldCheck, User as UserIcon, Cloud, CloudOff, RefreshCw, FileSpreadsheet, Home, Download, Share, PlusSquare, X, Wifi, LogOut, ShieldAlert, AlertTriangle, Smartphone, Settings } from 'lucide-react';
 import { syncTimeWithServer, checkDeveloperOptionsStatus, getDeviceFingerprint } from './utils';
 import { LogoMark } from './components/Logo';
@@ -684,7 +684,9 @@ const App: React.FC = () => {
 
       <main className={`flex-1 w-full mx-auto pb-24 ${currentUser?.role === 'admin' ? 'admin-wide py-4 md:py-6' : 'max-w-6xl p-4 md:p-6'}`}>
         {activeView === 'reports' && !currentUser ? (
-          <ReportsView syncUrl={config.syncUrl} adminConfig={config} onUpdateConfig={handleUpdateConfig} logAction={logAction} />
+          <ScreenLoader>
+            <LazyReportsView syncUrl={config.syncUrl} adminConfig={config} onUpdateConfig={handleUpdateConfig} logAction={logAction} />
+          </ScreenLoader>
         ) : (
           !currentUser ? (
             <Login
@@ -697,14 +699,16 @@ const App: React.FC = () => {
             />
           ) : (
             currentUser.role === 'admin' ? (
-              <AdminDashboard 
-                branches={branches} setBranches={setBranches} jobs={jobs} setJobs={setJobs}
-                records={records} config={config} setConfig={setConfig} allUsers={allUsers} setAllUsers={setAllUsers}
-                reportAccounts={reportAccounts} setReportAccounts={setReportAccounts}
-                visitPlans={visitPlans} setVisitPlans={setVisitPlans}
-                onRefresh={() => syncWithCloud(config.syncUrl)} isSyncing={isSyncing}
-                logAction={logAction}
-              />
+              <ScreenLoader>
+                <LazyAdminDashboard 
+                  branches={branches} setBranches={setBranches} jobs={jobs} setJobs={setJobs}
+                  records={records} config={config} setConfig={setConfig} allUsers={allUsers} setAllUsers={setAllUsers}
+                  reportAccounts={reportAccounts} setReportAccounts={setReportAccounts}
+                  visitPlans={visitPlans} setVisitPlans={setVisitPlans}
+                  onRefresh={() => syncWithCloud(config.syncUrl)} isSyncing={isSyncing}
+                  logAction={logAction}
+                />
+              </ScreenLoader>
             ) : (
               <UserDashboard 
                 user={currentUser} branches={branches} records={records} setRecords={setRecords}
