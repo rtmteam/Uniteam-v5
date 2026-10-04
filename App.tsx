@@ -778,6 +778,7 @@ const App: React.FC = () => {
                 googleSheetLink={config.googleSheetLink} onRefresh={() => syncWithCloud(config.syncUrl)}
                 isSyncing={isSyncing} lastUpdated={config.lastUpdated}
                 logAction={logAction}
+                jobs={jobs} holidays={config.holidays || []}
               />
             )
           )

@@ -58,6 +58,9 @@ const lazyWithReload = <T extends React.ComponentType<any>>(
 
 export const LazyAdminDashboard = lazyWithReload(() => import('./AdminDashboard'));
 export const LazyReportsView = lazyWithReload(() => import('./ReportsView'));
+// الطلبات: شاشة الموظف وشاشة المدير — كلٌّ في ملف يُنزَّل عند فتحه فقط
+export const LazyRequestsPanel = lazyWithReload(() => import('./RequestsPanel'));
+export const LazyRequestsAdmin = lazyWithReload(() => import('./RequestsAdmin'));
 
 /* ---------- حاجز الأخطاء ---------- */
 

@@ -1,9 +1,12 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Branch, AttendanceRecord, AppConfig, User, Job, ReportAccount, VisitPlan } from '../types';
 import { MapPin, Table, Trash2, Shield, CloudUpload, Briefcase, RotateCcw, Globe, Users, Plus, FileSpreadsheet, Download, Share2, Smartphone, RefreshCw, Edit2, Check, X, Unlink, Key, Lock, Eye, EyeOff, Clock, Monitor, UserCheck, Calendar, Navigation, ArrowUp, ArrowDown, GripVertical, KeyRound, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ReportsView from './ReportsView';
+import { LazyRequestsAdmin, ScreenLoader } from './LazyScreens';
+import { postRequestAction } from './requestsApi';
+import { Inbox } from 'lucide-react';
 
 interface AdminDashboardProps {
   branches: Branch[];
@@ -28,11 +31,66 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   branches, setBranches, jobs, setJobs, records, config, setConfig, allUsers, setAllUsers, 
   reportAccounts = [], setReportAccounts, visitPlans, setVisitPlans, onRefresh, isSyncing, logAction
 }) => {
-  const [activeTab, setActiveTab] = useState<'branches' | 'jobs' | 'users' | 'plans' | 'report-access' | 'reports' | 'holidays' | 'settings'>('branches');
+  const [activeTab, setActiveTab] = useState<'branches' | 'jobs' | 'users' | 'plans' | 'requests' | 'report-access' | 'reports' | 'holidays' | 'settings'>('branches');
+
+  // ---------- الحفظ الفوري: الموظفون وخطط الزيارات ----------
+  // كل تعديل يُحفظ في الخادم لحظة الضغط، ويكتب السطر الذي تغيّر وحده.
+  // لا يمرّ عبر «حفظ السحابة» الذي كان يمسح الشيت ويعيد كتابته من نسخة
+  // هذا الجهاز — فيحذف من سجّل بعد فتح اللوحة ويعيد الأجهزة القديمة.
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  // اسم المسؤول كما هو محفوظ في الخادم — تعديل خانة الاسم في الإعدادات قبل
+  // حفظها لا يجوز أن يُفشل كل عمليات الحفظ الأخرى
+  const authUserRef = useRef(config.adminUsername);
+  const adminCall = async (key: string, action: string, payload: Record<string, any>) => {
+    setSavingKey(key);
+    const res = await postRequestAction(config.syncUrl, {
+      action, adminUsername: authUserRef.current, adminPassword: config.adminPassword, ...payload
+    });
+    setSavingKey(null);
+    if (!res.ok) alert('لم يُحفظ:\n\n' + (res.error || 'خطأ غير معروف'));
+    return res as any;
+  };
+
+  /**
+   * الفروع والوظائف والإجازات وحسابات التقارير: بيانات يعدّلها المسؤول وحده،
+   * فتُحفظ القائمة كاملة فور كل تعديل (لا يكتبها موظف فلا خطر نسخة قديمة).
+   * التحديث يظهر فوراً، ويُعاد للحالة السابقة إن رفض الخادم.
+   */
+  type Upd<T> = T[] | ((prev: T[]) => T[]);
+  const resolve = <T,>(upd: Upd<T>, cur: T[]) => (typeof upd === 'function' ? (upd as (p: T[]) => T[])(cur) : upd);
+
+  const saveBranches = (upd: Upd<Branch>) => {
+    const prev = branches, next = resolve(upd, branches);
+    setBranches(next);
+    adminCall('list:branches', 'adminSaveConfigList', { key: 'branches', list: next }).then(res => { if (!res.ok) setBranches(prev); });
+  };
+  const saveJobs = (upd: Upd<Job>) => {
+    const prev = jobs, next = resolve(upd, jobs);
+    setJobs(next);
+    adminCall('list:jobs', 'adminSaveConfigList', { key: 'jobs', list: next }).then(res => { if (!res.ok) setJobs(prev); });
+  };
+  const persistHolidays = (next: string[], prev: string[]) => {
+    adminCall('list:holidays', 'adminSaveConfigList', { key: 'holidays', list: next }).then(res => {
+      if (res.ok) return;
+      setConfig(c => ({ ...c, holidays: prev }));
+    });
+  };
+  const saveReportAccounts = (upd: Upd<ReportAccount>) => {
+    const prev = reportAccounts, next = resolve(upd, reportAccounts);
+    setReportAccounts?.(next);
+    adminCall('list:reportAccounts', 'adminSaveReportAccounts', { accounts: next }).then(res => { if (!res.ok) setReportAccounts?.(prev); });
+  };
+
+  // عدد الطلبات المعلّقة لشارة القائمة — جلب واحد عند فتح اللوحة
+  const [pendingRequests, setPendingRequests] = useState(0);
+  useEffect(() => {
+    if (!config.syncUrl || !config.adminUsername || !config.adminPassword) return;
+    postRequestAction(config.syncUrl, { action: 'getApproverRequests', approverUser: config.adminUsername, approverPass: config.adminPassword })
+      .then(res => { if (res.ok) setPendingRequests((res.requests || []).filter(r => r.status === 'pending').length); });
+  }, [config.syncUrl, config.adminUsername, config.adminPassword]);
   const [newBranch, setNewBranch] = useState<Partial<Branch>>({ code: '', name: '', latitude: 0, longitude: 0, radius: 100 });
   const [newJobTitle, setNewJobTitle] = useState('');
   const [newHoliday, setNewHoliday] = useState('');
-  const [isPushing, setIsPushing] = useState(false);
   
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editUserData, setEditUserData] = useState<Partial<User>>({});
@@ -123,6 +181,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     { id: 'jobs', label: 'الوظائف', icon: Briefcase },
     { id: 'users', label: 'الموظفون', icon: Users },
     { id: 'plans', label: 'خطط الزيارات', icon: Navigation },
+    { id: 'requests', label: 'طلبات الموظفين', icon: Inbox },
     { id: 'holidays', label: 'الإجازات', icon: Calendar },
     { id: 'report-access', label: 'صلاحيات التقارير', icon: Key },
     { id: 'reports', label: 'استعراض التقارير', icon: FileSpreadsheet },
@@ -161,80 +220,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return match ? match[1] : timeStr;
   };
 
-  const pushToCloud = async (dataType?: string) => {
-    if (!config.syncUrl) return alert("يرجى ضبط رابط المزامنة أولاً");
-    setIsPushing(true);
-    try {
-      const payload: any = {
-        action: 'updateSystem',
-        adminUsername: config.adminUsername,
-        adminPassword: config.adminPassword,
-      };
 
-      // تحديث انتقائي بناءً على نوع البيانات
-      // Selective update based on dataType
-      if (!dataType || dataType === 'branches' || dataType === 'jobs' || dataType === 'holidays') {
-        payload.branches = branches;
-        payload.jobs = jobs;
-        payload.holidays = config.holidays || [];
-      }
-      
-      if (!dataType || dataType === 'users') {
-        payload.users = allUsers;
-      }
-      
-      if (!dataType || dataType === 'reportAccounts') {
-        payload.reportAccounts = reportAccounts;
-      }
-      
-      if (!dataType || dataType === 'visitPlans') {
-        payload.visitPlans = visitPlans;
-      }
-
-      // بلا no-cors عمداً.
-      // كان يعمي الاستجابة فتظهر رسالة النجاح مهما ردّ الخادم — وبعد إضافة
-      // المصادقة على updateSystem صار الرفض ممكناً، فكان المسؤول يرى «تم
-      // بنجاح» ولم يُحفظ شيء. text/plain طلب بسيط لا يستدعي preflight،
-      // وهو نفس ما يفعله مسار تسجيل الحضور الذي يقرأ الردّ بنجاح.
-      const response = await fetch(config.syncUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      const text = (await response.text()).trim();
-
-      if (text.trim().startsWith('<')) {
-        throw new Error('INVALID_RESPONSE');
-      }
-
-      if (text.startsWith('Error:')) {
-        const reason = text.replace(/^Error:\s*/, '');
-        logAction('فشل الحفظ في السحابة', `رفض الخادم: ${text}`);
-        alert('لم يُحفظ شيء.\n\n' + reason);
-        return;
-      }
-
-      logAction('حفظ في السحابة', `تحديث بيانات ${dataType || 'النظام'} في جوجل شيت`);
-      alert('تم حفظ البيانات في السحابة بنجاح.');
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logAction('فشل الحفظ في السحابة', `الخطأ: ${msg}`);
-      alert(
-        msg === 'INVALID_RESPONSE'
-          ? 'الرابط المسجل لا يؤدي إلى كود النظام. راجع رابط المزامنة.'
-          : 'تعذّر الاتصال بالسحابة. تأكد من الإنترنت وحاول مجدداً.\n\nلم يُحفظ شيء.'
-      );
-    }
-    finally { setIsPushing(false); }
-  };
-
-  const saveEditUser = (id: string) => {
+  const saveEditUser = async (id: string) => {
     const user = allUsers.find(u => u.id === id);
-    setAllUsers(prev => prev.map(u => u.id === id ? { ...u, ...editUserData } as User : u));
-    logAction('تعديل بيانات موظف', `الموظف: ${user?.fullName}`);
+    const res = await adminCall('user:' + id, 'adminSaveUser', { user: { ...user, ...editUserData, id } });
+    if (!res.ok) return;
+    setAllUsers(prev => prev.map(u => u.id === id ? { ...u, ...res.user } as User : u));
+    logAction('تعديل بيانات موظف', `الموظف: ${res.user?.fullName || user?.fullName}`);
     setEditingUserId(null);
   };
 
@@ -284,7 +276,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const bstr = evt.target?.result; const wb = XLSX.read(bstr, { type: 'binary' }); const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
         
         if (type === 'branches') { 
-          setBranches(prev => [...prev, ...data.map((item: any) => ({
+          saveBranches(prev => [...prev, ...data.map((item: any) => ({
             id: Math.random().toString(36).substr(2, 9),
             code: (item["كود الفرع"] || item["كود"] || item["Code"] || item["code"] || '').toString().trim(),
             name: item["اسم الفرع"] || 'فرع جديد',
@@ -294,7 +286,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           }))]); 
           logAction('استيراد فروع', `تم استيراد ${data.length} فرع من ملف إكسل`);
         } else if (type === 'jobs') { 
-          setJobs(prev => [...prev, ...data.map((item: any) => ({ id: Math.random().toString(36).substr(2, 9), title: item["اسم الوظيفة"] || 'موظف', canVisitMultipleBranches: item["زيارة فروع متعددة"] === "نعم" }))]); 
+          saveJobs(prev => [...prev, ...data.map((item: any) => ({ id: Math.random().toString(36).substr(2, 9), title: item["اسم الوظيفة"] || 'موظف', canVisitMultipleBranches: item["زيارة فروع متعددة"] === "نعم" }))]); 
           logAction('استيراد وظائف', `تم استيراد ${data.length} وظيفة من ملف إكسل`);
         } else if (type === 'plans') {
           const newPlans = data.map((item: any) => {
@@ -335,9 +327,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             }
             return null;
           }).filter(p => p !== null) as VisitPlan[];
-          setVisitPlans(prev => [...prev, ...newPlans]);
-          logAction('استيراد خطط زيارات', `تم استيراد ${newPlans.length} خطة زيارة`);
-          alert(`تم استيراد ${newPlans.length} خطة زيارة بنجاح. يرجى النقر على 'حفظ في السحابة' لتأكيد التغييرات.`);
+          if (newPlans.length === 0) {
+            alert('لم يُستورد شيء: تأكد من الأرقام التسلسلية وأسماء الفروع.');
+          } else {
+            adminCall('import:plans', 'adminImportPlans', { plans: newPlans }).then(res => {
+              if (!res.ok) return;
+              setVisitPlans(prev => [...prev, ...(res.plans || [])]);
+              logAction('استيراد خطط زيارات', `تم استيراد ${(res.plans || []).length} خطة زيارة`);
+              alert(`تم استيراد وحفظ ${(res.plans || []).length} خطة زيارة.`);
+            });
+          }
         } else if (type === 'users') {
           const existingNids = new Set(allUsers.map(u => u.nationalId));
           let duplicateCount = 0;
@@ -371,18 +370,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           }).filter((u) => u !== null) as User[];
 
           if (newUsers.length > 0) {
-            setAllUsers(prev => [...prev, ...newUsers]);
-            logAction('استيراد موظفين', `تم استيراد ${newUsers.length} موظف بنجاح`);
-            let msg = `تم استيراد ${newUsers.length} موظف بنجاح.`;
-            if (duplicateCount > 0) msg += ` تم تجاهل ${duplicateCount} موظف لوجودهم مسبقاً.`;
-            msg += " يرجى النقر على 'حفظ في السحابة' لتأكيد التغييرات.";
-            alert(msg);
+            // الخادم يتحقق من التكرار مرة أخرى مقابل الشيت الفعلي ويولّد الأرقام التسلسلية
+            adminCall('import:users', 'adminImportUsers', { users: newUsers }).then(res => {
+              if (!res.ok) return;
+              const added: User[] = res.users || [];
+              setAllUsers(prev => [...prev, ...added]);
+              logAction('استيراد موظفين', `تم استيراد ${added.length} موظف بنجاح`);
+              const skipped = duplicateCount + (res.skipped || 0);
+              alert(`تم استيراد وحفظ ${added.length} موظف.` + (skipped > 0 ? ` تم تجاهل ${skipped} لوجودهم مسبقاً.` : ''));
+            });
           } else {
             alert("لم يتم استيراد أي موظف. جميع البيانات موجودة مسبقاً أو الملف فارغ.");
           }
         } else {
            logAction('استيراد بيانات', 'تم استيراد بيانات من ملف إكسل');
-           alert("تم استيراد البيانات بنجاح! يرجى النقر على 'حفظ في السحابة' لتأكيد التغييرات.");
+           alert("تم استيراد البيانات وحفظها.");
         }
       } catch (err) { 
         logAction('فشل استيراد إكسل', `النوع: ${type}, الخطأ: ${err instanceof Error ? err.message : String(err)}`);
@@ -398,7 +400,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const branch = branches.find(b => b.id === newPlanBranchId);
     
     const newPlan: VisitPlan = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: 'p' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
       userId: newPlanUserId,
       userName: user?.fullName || 'N/A',
       userSerial: user?.serialNumber || 'N/A',
@@ -407,34 +409,42 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       date: newPlanDate
     };
 
-    setVisitPlans(prev => [newPlan, ...prev]);
-    logAction('إضافة زيارة يدوية', `الموظف: ${newPlan.userName}, الفرع: ${newPlan.branchName}, التاريخ: ${newPlanDate}`);
-    setNewPlanUserId('');
-    setNewPlanBranchId('');
-    setNewPlanDate('');
-    alert("تم إضافة الزيارة بنجاح. يرجى النقر على 'حفظ في السحابة' لتأكيد التغييرات.");
+    adminCall('plan:new', 'adminSavePlan', { plan: newPlan }).then(res => {
+      if (!res.ok) return;
+      setVisitPlans(prev => [{ ...newPlan, ...res.plan }, ...prev]);
+      logAction('إضافة زيارة يدوية', `الموظف: ${newPlan.userName}, الفرع: ${newPlan.branchName}, التاريخ: ${newPlanDate}`);
+      setNewPlanUserId('');
+      setNewPlanBranchId('');
+      setNewPlanDate('');
+    });
   };
 
   const saveEditPlan = (id: string) => {
     const user = allUsers.find(u => u.id === editPlanData.userId);
     const branch = branches.find(b => b.id === editPlanData.branchId);
     
-    setVisitPlans(visitPlans.map(p => p.id === id ? {
-      ...p,
+    const current = visitPlans.find(p => p.id === id);
+    if (!current) return;
+    const updated: VisitPlan = {
+      ...current,
       ...editPlanData,
-      userName: user?.fullName || p.userName,
-      userSerial: user?.serialNumber || p.userSerial,
-      branchName: editPlanData.branchId === 'holiday' ? 'Holiday' : (branch?.name || p.branchName)
-    } : p));
-    
-    setEditingPlanId(null);
-    setEditPlanData({});
-    logAction('تعديل خطة زيارة', `المعرف: ${id}`);
+      id,
+      userName: user?.fullName || current.userName,
+      userSerial: user?.serialNumber || current.userSerial,
+      branchName: editPlanData.branchId === 'holiday' ? 'Holiday' : (branch?.name || current.branchName)
+    };
+    adminCall('plan:' + id, 'adminSavePlan', { plan: updated }).then(res => {
+      if (!res.ok) return;
+      setVisitPlans(prev => prev.map(p => p.id === id ? updated : p));
+      setEditingPlanId(null);
+      setEditPlanData({});
+      logAction('تعديل خطة زيارة', `المعرف: ${id}`);
+    });
   };
 
   const saveEditBranch = (id: string) => { 
     const branch = branches.find(b => b.id === id);
-    setBranches(prev => prev.map(b => b.id === id ? { ...b, ...editBranchData } as Branch : b)); 
+    saveBranches(prev => prev.map(b => b.id === id ? { ...b, ...editBranchData } as Branch : b)); 
     logAction('تعديل فرع', `الفرع: ${branch?.name}`);
     setEditingBranchId(null); 
   };
@@ -448,7 +458,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       allowedJobs: selectedJobsForAcc,
       allowedEmployees: selectedUsersForAcc 
     };
-    setReportAccounts?.([...reportAccounts, newAcc]); 
+    saveReportAccounts([...reportAccounts, newAcc]); 
     logAction('إضافة حساب تقارير', `المستخدم: ${newRepUser}`);
     setNewRepUser(''); setNewRepPass(''); setSelectedJobsForAcc([]); setSelectedUsersForAcc([]);
   };
@@ -461,7 +471,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       allowedJobs: editReportData.allowedJobs || [],
       allowedEmployees: editReportData.allowedEmployees || []
     };
-    setReportAccounts?.(prev => prev.map(acc => acc.id === id ? { ...acc, ...updatedAcc } as ReportAccount : acc)); 
+    saveReportAccounts(prev => prev.map(acc => acc.id === id ? { ...acc, ...updatedAcc } as ReportAccount : acc)); 
     logAction('تعديل حساب تقارير', `المستخدم: ${editReportData.username}`);
     setEditingReportId(null);
   };
@@ -481,7 +491,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const deleteSelectedBranches = () => {
     if (window.confirm(`هل أنت متأكد من حذف ${selectedBranches.size} فرع؟`)) {
-      setBranches(branches.filter(b => !selectedBranches.has(b.id)));
+      saveBranches(branches.filter(b => !selectedBranches.has(b.id)));
       logAction('حذف فروع (بالجملة)', `تم حذف ${selectedBranches.size} فرع`);
       setSelectedBranches(new Set());
     }
@@ -492,7 +502,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const updatedBranches = [...branches];
     const [removed] = updatedBranches.splice(currentIndex, 1);
     updatedBranches.splice(targetIndex, 0, removed);
-    setBranches(updatedBranches);
+    saveBranches(updatedBranches);
     logAction('تعديل ترتيب الفروع كلياً', `تم نقل فرع ${removed.name} من الترتيب ${currentIndex + 1} إلى الترتيب ${targetIndex + 1}`);
   };
 
@@ -538,19 +548,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 >
                   <tab.icon size={16} className={`admin-nav-item__icon ${tab.id === 'reports' ? 'text-emerald-400' : ''}`} />
                   <span className="admin-nav-item__label">{tab.label}</span>
+                  {tab.id === 'requests' && pendingRequests > 0 && (
+                    <span className="mr-auto min-w-[20px] h-[20px] px-1.5 rounded-full bg-red-500 text-white text-[11px] font-black flex items-center justify-center">{pendingRequests}</span>
+                  )}
                 </button>
               </React.Fragment>
             ))}
-            <div className="my-1 border-t border-slate-700/60 pt-1"></div>
-            <button 
-              onClick={() => pushToCloud()} 
-              disabled={isPushing} 
-              className="admin-nav-item admin-nav-item--cloud-save cursor-pointer"
-              title="حفظ كافة البيانات في السحابة"
-            >
-              {isPushing ? <RotateCcw size={15} className="animate-spin text-orange-400" /> : <CloudUpload size={15} className="text-orange-400" />}
-              <span className="admin-nav-item__label">حفظ السحابة</span>
-            </button>
+            {/* «حفظ السحابة» أُزيل: كل قسم يحفظ تعديلاته فوراً */}
+            {savingKey && (
+              <div className="admin-nav-item" style={{ cursor: 'default' }}>
+                <Loader2 size={15} className="animate-spin text-blue-400" />
+                <span className="admin-nav-item__label">جارٍ الحفظ…</span>
+              </div>
+            )}
           </nav>
         </aside>
 
@@ -563,6 +573,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                <div className="flex items-center gap-2.5">
                  <Users size={18} className="text-blue-400 shrink-0" />
                  <h3 className="text-xs md:text-sm font-black text-white uppercase tracking-tighter">سجل الموظفين</h3>
+                 <span className="ut-chip ut-chip--ok" style={{ height: 22, fontSize: 11 }}>يُحفظ فوراً</span>
                </div>
                <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
                   <button onClick={() => { downloadTemplate('users'); logAction('تحميل نموذج', 'نموذج استيراد الموظفين'); }} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-[10px] font-black transition-all"><Download size={13}/> نموذج استيراد</button>
@@ -649,7 +660,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <div className="flex justify-center gap-2">
                            {editingUserId === user.id ? (
                              <>
-                               <button onClick={() => saveEditUser(user.id)} className="text-green-500 hover:bg-green-900/20 p-1.5 rounded"><Check size={18}/></button>
+                               <button onClick={() => saveEditUser(user.id)} disabled={savingKey === 'user:' + user.id} className="text-green-500 hover:bg-green-900/20 p-1.5 rounded disabled:opacity-50" title="حفظ">{savingKey === 'user:' + user.id ? <Loader2 size={18} className="animate-spin" /> : <Check size={18}/>}</button>
                                <button onClick={() => setEditingUserId(null)} className="text-red-500 hover:bg-red-900/20 p-1.5 rounded"><X size={18}/></button>
                              </>
                            ) : (
@@ -678,16 +689,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 {deviceCount > 0 && (
                                   <button onClick={() => {
                                     if(confirm('هل أنت متأكد من فك ارتباط جميع الأجهزة لهذا الموظف؟')) {
-                                      setAllUsers(allUsers.map(u => u.id === user.id ? {...u, deviceId: "", deviceIds: []} : u));
-                                      logAction('فك ارتباط أجهزة', `الموظف: ${user.fullName}`);
+                                      adminCall('user:' + user.id, 'adminResetDevices', { userId: user.id }).then(res => {
+                                        if (!res.ok) return;
+                                        setAllUsers(prev => prev.map(u => u.id === user.id ? {...u, deviceId: "", deviceIds: []} : u));
+                                        logAction('فك ارتباط أجهزة', `الموظف: ${user.fullName}`);
+                                      });
                                     }
                                   }} className="text-orange-400 hover:bg-orange-900/20 p-1.5 rounded" title="فك ارتباط جميع الأجهزة"><Unlink size={16}/></button>
                                 )}
                                 
                                 <button onClick={() => { 
-                                  if(confirm('حذف الموظف؟')) {
-                                    setAllUsers(allUsers.filter(u => u.id !== user.id));
-                                    logAction('حذف موظف', `الموظف: ${user.fullName}`);
+                                  if(confirm(`حذف الموظف ${user.fullName} نهائياً من الشيت؟`)) {
+                                    adminCall('user:' + user.id, 'adminDeleteUser', { userId: user.id }).then(res => {
+                                      if (!res.ok) return;
+                                      setAllUsers(prev => prev.filter(u => u.id !== user.id));
+                                      logAction('حذف موظف', `الموظف: ${user.fullName}`);
+                                    });
                                   }
                                 }} className="text-slate-500 hover:text-red-400 p-1.5"><Trash2 size={16}/></button>
                               </>
@@ -726,7 +743,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                  <input type="number" placeholder="النطاق (متر)" className="bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-xl px-3 py-2 text-xs outline-none text-white col-span-1" value={newBranch.radius || ''} onChange={e => setNewBranch({...newBranch, radius: parseInt(e.target.value)})} />
                  <button onClick={() => {
                    if (newBranch.name) {
-                     setBranches([...branches, { ...newBranch, id: Math.random().toString(36).substr(2, 9), radius: newBranch.radius || 100 } as Branch]);
+                     saveBranches([...branches, { ...newBranch, id: Math.random().toString(36).substr(2, 9), radius: newBranch.radius || 100 } as Branch]);
                      logAction('إضافة فرع جديد', `الفرع: ${newBranch.name} (${newBranch.code || 'بدون كود'})`);
                      setNewBranch({ code: '', name: '', latitude: 0, longitude: 0, radius: 100 });
                    }
@@ -804,7 +821,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <td data-label="اسم الفرع" className="py-4 px-2 font-black">{editingBranchId === b.id ? (<input className="bg-slate-900 border border-blue-500 rounded px-3 py-1.5 text-xs w-full outline-none text-white" value={editBranchData.name || ''} onChange={e => setEditBranchData({...editBranchData, name: e.target.value})} />) : (<span className="text-emerald-400">{b.name}</span>)}</td>
                       <td data-label="إحداثيات (Lat, Lng)" className="py-4 px-2">{editingBranchId === b.id ? (<div className="flex gap-1"><input type="number" step="0.000001" className="bg-slate-900 border border-blue-500 rounded px-2 py-1.5 text-[10px] w-full font-mono outline-none text-white" placeholder="Lat" value={editBranchData.latitude || ''} onChange={e => setEditBranchData({...editBranchData, latitude: parseFloat(e.target.value)})} /><input type="number" step="0.000001" className="bg-slate-900 border border-blue-500 rounded px-2 py-1.5 text-[10px] w-full font-mono outline-none text-white" placeholder="Lng" value={editBranchData.longitude || ''} onChange={e => setEditBranchData({...editBranchData, longitude: parseFloat(e.target.value)})} /></div>) : (<span className="text-[10px] text-slate-400 font-mono">{b.latitude.toFixed(6)}, {b.longitude.toFixed(6)}</span>)}</td>
                       <td data-label="النطاق" className="py-4 px-2 text-center">{editingBranchId === b.id ? (<input type="number" className="bg-slate-900 border border-blue-500 rounded px-2 py-1.5 text-xs w-20 text-center outline-none text-white" value={editBranchData.radius || ''} onChange={e => setEditBranchData({...editBranchData, radius: parseInt(e.target.value)})} />) : (<span className="text-blue-400 font-black text-xs">{b.radius}م</span>)}</td>
-                      <td data-label="إجراءات" className="py-4 px-2 text-center"><div className="flex justify-center gap-2">{editingBranchId === b.id ? (<><button onClick={() => saveEditBranch(b.id)} className="text-green-500 hover:bg-green-500/10 p-2 rounded-lg transition-all"><Check size={18}/></button><button onClick={() => setEditingBranchId(null)} className="text-red-500 hover:bg-red-500/10 p-2 rounded-lg transition-all"><X size={18}/></button></>) : (<><button onClick={() => { setEditingBranchId(b.id); setEditBranchData(b); }} className="text-blue-400 hover:bg-blue-400/10 p-2 rounded-lg transition-all" title="تعديل"><Edit2 size={16}/></button><button onClick={() => { if(confirm('حذف الفرع؟')) { setBranches(branches.filter(x => x.id !== b.id)); logAction('حذف فرع', `الفرع: ${b.name}`); } }} className="text-slate-500 hover:text-red-400 hover:bg-red-400/10 p-2 rounded-lg transition-all" title="حذف"><Trash2 size={16}/></button></>)}</div></td>
+                      <td data-label="إجراءات" className="py-4 px-2 text-center"><div className="flex justify-center gap-2">{editingBranchId === b.id ? (<><button onClick={() => saveEditBranch(b.id)} className="text-green-500 hover:bg-green-500/10 p-2 rounded-lg transition-all"><Check size={18}/></button><button onClick={() => setEditingBranchId(null)} className="text-red-500 hover:bg-red-500/10 p-2 rounded-lg transition-all"><X size={18}/></button></>) : (<><button onClick={() => { setEditingBranchId(b.id); setEditBranchData(b); }} className="text-blue-400 hover:bg-blue-400/10 p-2 rounded-lg transition-all" title="تعديل"><Edit2 size={16}/></button><button onClick={() => { if(confirm('حذف الفرع؟')) { saveBranches(branches.filter(x => x.id !== b.id)); logAction('حذف فرع', `الفرع: ${b.name}`); } }} className="text-slate-500 hover:text-red-400 hover:bg-red-400/10 p-2 rounded-lg transition-all" title="حذف"><Trash2 size={16}/></button></>)}</div></td>
                     </tr>
                   ))}</tbody>
                </table>
@@ -830,7 +847,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                </div>
                <div className="flex flex-col sm:flex-row gap-2">
                   <input type="text" placeholder="عنوان الوظيفة الجديد" className="bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-xl px-3 py-2 text-xs outline-none text-white flex-1 min-w-0" value={newJobTitle} onChange={e => setNewJobTitle(e.target.value)} />
-                  <button onClick={() => { if(newJobTitle.trim()) { setJobs([...jobs, { id: Math.random().toString(36).substr(2, 9), title: newJobTitle, workingDays: [0, 1, 2, 3, 4, 6] }]); logAction('إضافة وظيفة جديدة', `الوظيفة: ${newJobTitle}`); setNewJobTitle(''); } }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-4 py-2 text-xs font-black flex items-center justify-center gap-1.5 transition-all shrink-0 shadow-md"><Plus size={16}/> إضافة وظيفة</button>
+                  <button onClick={() => { if(newJobTitle.trim()) { saveJobs([...jobs, { id: Math.random().toString(36).substr(2, 9), title: newJobTitle, workingDays: [0, 1, 2, 3, 4, 6] }]); logAction('إضافة وظيفة جديدة', `الوظيفة: ${newJobTitle}`); setNewJobTitle(''); } }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-4 py-2 text-xs font-black flex items-center justify-center gap-1.5 transition-all shrink-0 shadow-md"><Plus size={16}/> إضافة وظيفة</button>
                </div>
             </div>
 
@@ -860,7 +877,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       { id: 6, label: 'س' }
                     ];
                     const toggleJobDay = (jobId: string, dayId: number) => {
-                      setJobs(jobs.map(job => {
+                      saveJobs(jobs.map(job => {
                         if (job.id === jobId) {
                           const currentDays = job.workingDays || [0, 1, 2, 3, 4, 6];
                           const newDays = currentDays.includes(dayId) ? currentDays.filter(d => d !== dayId) : [...currentDays, dayId];
@@ -879,7 +896,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <td data-label="صلاحية التنقل" className="py-4 px-3 md:px-4 text-center">
                           <button
                             onClick={() => {
-                              setJobs(jobs.map(job => job.id === j.id ? { ...job, canVisitMultipleBranches: !job.canVisitMultipleBranches } : job));
+                              saveJobs(jobs.map(job => job.id === j.id ? { ...job, canVisitMultipleBranches: !job.canVisitMultipleBranches } : job));
                               logAction('تعديل صلاحية التنقل', `الوظيفة: ${j.title}`);
                             }}
                             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
@@ -918,7 +935,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <button
                             onClick={() => {
                               if (confirm('حذف الوظيفة؟')) {
-                                setJobs(jobs.filter(x => x.id !== j.id));
+                                saveJobs(jobs.filter(x => x.id !== j.id));
                                 logAction('حذف وظيفة', `الوظيفة: ${j.title}`);
                               }
                             }}
@@ -942,11 +959,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="flex items-center gap-2.5">
                 <Navigation size={18} className="text-blue-400 shrink-0" />
                 <h3 className="text-xs md:text-sm font-black text-white uppercase tracking-tighter">خطط زيارات الفروع</h3>
+                <span className="ut-chip ut-chip--ok" style={{ height: 22, fontSize: 11 }}>يُحفظ فوراً</span>
               </div>
               <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
                 <button onClick={() => { downloadTemplate('plans'); logAction('تحميل نموذج', 'نموذج استيراد خطط الزيارات'); }} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-[10px] font-black transition-all"><Download size={13}/> نموذج استيراد</button>
                 <button onClick={() => planFileInputRef.current?.click()} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded-lg text-[10px] font-black transition-all"><FileSpreadsheet size={13}/> استيراد الخطط</button>
-                <button onClick={() => { setVisitPlans([]); logAction('مسح جميع الخطط', 'تم مسح كافة خطط الزيارات'); }} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-red-600/10 text-red-400 border border-red-900/30 rounded-lg text-[10px] font-black transition-all"><Trash2 size={13}/> مسح الكل</button>
+                <button onClick={() => {
+                  // أيام الطلبات المعتمدة (req_) لا تُحذف من هنا — مصدرها شيت الطلبات
+                  const ids = visitPlans.filter(p => !String(p.id).startsWith('req_')).map(p => p.id);
+                  if (!ids.length) return;
+                  if (!confirm(`حذف ${ids.length} زيارة نهائياً من الشيت؟\n\nتنبيه: التقارير السابقة تعتمد على هذه الخطط.`)) return;
+                  adminCall('plans:clear', 'adminDeletePlans', { ids }).then(res => {
+                    if (!res.ok) return;
+                    setVisitPlans(prev => prev.filter(p => String(p.id).startsWith('req_')));
+                    logAction('مسح جميع الخطط', `تم حذف ${res.deleted} زيارة`);
+                  });
+                }} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-red-600/10 text-red-400 border border-red-900/30 rounded-lg text-[10px] font-black transition-all"><Trash2 size={13}/> مسح الكل</button>
               </div>
             </div>
 
@@ -963,8 +991,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
                   <input type="date" className="bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-xl px-3 py-2 text-xs outline-none text-white font-mono" value={newPlanDate} onChange={e => setNewPlanDate(e.target.value)} />
-                  <button onClick={addManualPlan} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black py-2 px-4 text-xs flex items-center justify-center gap-1.5 transition-all shadow-md">
-                    <Plus size={16}/> إضافة زيارة
+                  <button onClick={addManualPlan} disabled={savingKey === 'plan:new'} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black py-2 px-4 text-xs flex items-center justify-center gap-1.5 transition-all shadow-md disabled:opacity-50">
+                    {savingKey === 'plan:new' ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16}/>} إضافة زيارة
                   </button>
                </div>
             </div>
@@ -1036,13 +1064,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div className="flex items-center justify-center gap-1">
                             {isEditing ? (
                               <>
-                                <button onClick={() => saveEditPlan(plan.id)} className="text-green-500 hover:text-green-400 p-1.5"><Check size={16}/></button>
+                                <button onClick={() => saveEditPlan(plan.id)} disabled={savingKey === 'plan:' + plan.id} className="text-green-500 hover:text-green-400 p-1.5 disabled:opacity-50" title="حفظ">{savingKey === 'plan:' + plan.id ? <Loader2 size={16} className="animate-spin" /> : <Check size={16}/>}</button>
                                 <button onClick={() => { setEditingPlanId(null); setEditPlanData({}); }} className="text-slate-500 hover:text-slate-400 p-1.5"><X size={16}/></button>
                               </>
+                            ) : String(plan.id).startsWith('req_') ? (
+                              // يوم من خطة شهرية أو إجازة معتمدة — يُعدَّل من «طلبات الموظفين»
+                              <button onClick={() => setActiveTab('requests')} className="text-xs font-bold text-blue-300 bg-blue-900/20 border border-blue-800/40 rounded-lg px-2 py-1" title="يُعدَّل من طلبات الموظفين">
+                                {plan.branchName === 'Holiday' ? 'إجازة معتمدة' : 'من خطة شهرية'}
+                              </button>
                             ) : (
                               <>
                                 <button onClick={() => { setEditingPlanId(plan.id); setEditPlanData(plan); }} className="text-blue-500 hover:text-blue-400 p-1.5"><Edit2 size={16}/></button>
-                                <button onClick={() => { if(confirm('حذف هذه الخطة؟')) { setVisitPlans(visitPlans.filter(p => p.id !== plan.id)); logAction('حذف خطة زيارة', `الموظف: ${user?.fullName || plan.userName}, الفرع: ${branch?.name || plan.branchName}`); } }} className="text-slate-500 hover:text-red-400 p-1.5"><Trash2 size={16}/></button>
+                                <button disabled={savingKey === 'plan:' + plan.id} onClick={() => { if(confirm('حذف هذه الزيارة؟')) { adminCall('plan:' + plan.id, 'adminDeletePlans', { ids: [plan.id] }).then(res => { if (!res.ok) return; setVisitPlans(prev => prev.filter(p => p.id !== plan.id)); logAction('حذف خطة زيارة', `الموظف: ${user?.fullName || plan.userName}, الفرع: ${branch?.name || plan.branchName}`); }); } }} className="text-slate-500 hover:text-red-400 p-1.5 disabled:opacity-40">{savingKey === 'plan:' + plan.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16}/>}</button>
                               </>
                             )}
                           </div>
@@ -1064,7 +1097,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             <div className="bg-slate-900/50 p-3.5 md:p-4 rounded-2xl border border-slate-700 flex gap-2">
                <input type="date" className="bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-xl px-3 py-2 text-xs outline-none text-white font-mono flex-1" value={newHoliday} onChange={e => setNewHoliday(e.target.value)} />
-               <button onClick={() => { if(newHoliday && !config.holidays?.includes(newHoliday)) { const newConfig = {...config, holidays: [...(config.holidays||[]), newHoliday]}; setConfig(newConfig); const { adminPassword, ...configToSave } = newConfig; localStorage.setItem('attendance_config', JSON.stringify(configToSave)); logAction('إضافة إجازة رسمية', `التاريخ: ${newHoliday}`); setNewHoliday(''); } }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-4 py-2 text-xs font-black flex items-center gap-1.5 transition-all shrink-0"><Plus size={16}/> إضافة إجازة</button>
+               <button onClick={() => { if(newHoliday && !config.holidays?.includes(newHoliday)) { const newConfig = {...config, holidays: [...(config.holidays||[]), newHoliday]}; setConfig(newConfig); persistHolidays(newConfig.holidays || [], config.holidays || []); const { adminPassword, ...configToSave } = newConfig; localStorage.setItem('attendance_config', JSON.stringify(configToSave)); logAction('إضافة إجازة رسمية', `التاريخ: ${newHoliday}`); setNewHoliday(''); } }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-4 py-2 text-xs font-black flex items-center gap-1.5 transition-all shrink-0"><Plus size={16}/> إضافة إجازة</button>
             </div>
 
             <div className="flex justify-between items-center">
@@ -1074,7 +1107,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                {(config.holidays || []).sort().map(h => (
                  <div key={h} className="p-4 bg-slate-900 rounded-2xl border border-slate-700 flex justify-between items-center hover:border-blue-500 transition-all">
                    <span className="text-xs font-bold font-mono text-blue-400">{h}</span>
-                   <button onClick={() => { if(confirm('حذف الإجازة؟')) { const newConfig = {...config, holidays: config.holidays!.filter(x => x !== h)}; setConfig(newConfig); const { adminPassword, ...configToSave } = newConfig; localStorage.setItem('attendance_config', JSON.stringify(configToSave)); logAction('حذف إجازة رسمية', `التاريخ: ${h}`); } }} className="text-slate-600 hover:text-red-500"><Trash2 size={14}/></button>
+                   <button onClick={() => { if(confirm('حذف الإجازة؟')) { const newConfig = {...config, holidays: config.holidays!.filter(x => x !== h)}; setConfig(newConfig); persistHolidays(newConfig.holidays || [], config.holidays || []); const { adminPassword, ...configToSave } = newConfig; localStorage.setItem('attendance_config', JSON.stringify(configToSave)); logAction('حذف إجازة رسمية', `التاريخ: ${h}`); } }} className="text-slate-600 hover:text-red-500"><Trash2 size={14}/></button>
                  </div>
                ))}
             </div>
@@ -1227,7 +1260,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           ) : (
                             <>
                               <button onClick={() => { setEditingReportId(acc.id); setEditReportData(acc); }} className="text-blue-400 hover:bg-blue-900/20 p-1.5 rounded"><Edit2 size={16}/></button>
-                              <button onClick={() => { if(confirm('حذف حساب التقارير؟')) { setReportAccounts?.(reportAccounts.filter(x => x.id !== acc.id)); logAction('حذف حساب تقارير', `المستخدم: ${acc.username}`); } }} className="text-slate-500 hover:text-red-400 p-1.5"><Trash2 size={16}/></button>
+                              <button onClick={() => { if(confirm('حذف حساب التقارير؟')) { saveReportAccounts(reportAccounts.filter(x => x.id !== acc.id)); logAction('حذف حساب تقارير', `المستخدم: ${acc.username}`); } }} className="text-slate-500 hover:text-red-400 p-1.5"><Trash2 size={16}/></button>
                             </>
                           )}
                         </div>
@@ -1260,6 +1293,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               />
             </div>
           </div>
+        )}
+        {activeTab === 'requests' && (
+          <ScreenLoader>
+            <LazyRequestsAdmin
+              syncUrl={config.syncUrl} approverUser={config.adminUsername} approverPass={config.adminPassword || ''}
+              branches={branches} onPendingCount={setPendingRequests} onChanged={onRefresh} logAction={logAction}
+            />
+          </ScreenLoader>
         )}
         {activeTab === 'settings' && (
           <div className="space-y-4 md:space-y-6">
@@ -1301,11 +1342,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               
               <div className="pt-4 border-t border-slate-700">
                 <button 
-                  onClick={() => {
+                  onClick={async () => {
                     const { adminPassword, ...configToSave } = config;
+                    if ((config.adminUsername || '') !== (authUserRef.current || '')) {
+                      // اسم المسؤول يتغير في الخادم أولاً؛ التوثيق بالاسم القديم المحفوظ
+                      const res = await adminCall('settings', 'adminSaveSettings', { newAdminUsername: config.adminUsername });
+                      if (!res.ok) return;
+                      authUserRef.current = config.adminUsername;
+                    }
                     localStorage.setItem('attendance_config', JSON.stringify(configToSave));
                     alert('تم حفظ الإعدادات بنجاح');
-                    logAction('تحديث إعدادات النظام', 'تغيير إعدادات سجل المراقبة');
+                    logAction('تحديث إعدادات النظام', 'تغيير إعدادات النظام');
                   }} 
                   className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all"
                 >

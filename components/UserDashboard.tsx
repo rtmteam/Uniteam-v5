@@ -1,7 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Branch, AttendanceRecord, VisitPlan } from '../types';
-import { MapPin, Clock, CheckCircle, AlertCircle, RotateCcw, Cloud, FileText, Navigation, Calendar } from 'lucide-react';
+import { User, Branch, AttendanceRecord, VisitPlan, Job, StaffRequest } from '../types';
+import { MapPin, Clock, CheckCircle, AlertCircle, RotateCcw, Cloud, FileText, Navigation, Calendar, Inbox, Fingerprint } from 'lucide-react';
+import { LazyRequestsPanel, ScreenLoader } from './LazyScreens';
+import { postRequestAction, employeeAuth, unseenDecisions } from './requestsApi';
 import { calculateDistance, getDeviceFingerprint, getEgyptTime, getRealNetworkTime, checkDeveloperOptionsStatus, checkMockLocationStatus } from '../utils';
 
 interface UserDashboardProps {
@@ -15,6 +17,10 @@ interface UserDashboardProps {
   lastUpdated?: string;
   logAction: (action: string, details?: string) => void;
   visitPlans: VisitPlan[];
+  /** الوظائف — تحدد صلاحية الخطة الشهرية وأيام العمل */
+  jobs?: Job[];
+  /** الإجازات الرسمية YYYY-MM-DD — تُتخطّى في اقتراح أيام الخطة */
+  holidays?: string[];
 }
 
 /**
@@ -46,8 +52,34 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
   isSyncing, 
   lastUpdated,
   logAction,
-  visitPlans
+  visitPlans,
+  jobs = [],
+  holidays = []
 }) => {
+  // ---------- تبويب «طلباتي» ----------
+  const [tab, setTab] = useState<'attendance' | 'requests'>('attendance');
+  const [myRequests, setMyRequests] = useState<StaffRequest[]>([]);
+  const [reqLoading, setReqLoading] = useState(false);
+  const [reqError, setReqError] = useState('');
+  const [unseen, setUnseen] = useState(0);
+
+  const loadRequests = async () => {
+    if (!googleSheetLink) return;
+    setReqLoading(true); setReqError('');
+    const res = await postRequestAction(googleSheetLink, { action: 'getMyRequests', ...employeeAuth(user.nationalId) });
+    setReqLoading(false);
+    if (!res.ok) { setReqError(res.error || 'تعذّر تحميل الطلبات'); return; }
+    const list = res.requests || [];
+    setMyRequests(list);
+    setUnseen(unseenDecisions(user.id, list));
+  };
+
+  // جلب واحد متأخر عند الفتح لشارة التبويب — بعد مزامنة البداية لا معها
+  useEffect(() => {
+    const t = setTimeout(() => { loadRequests(); }, 4000);
+    return () => clearTimeout(t);
+  }, [user.id, googleSheetLink]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const isUserDefaultBranch = (branch: Branch, u: User): boolean => {
     const defaultVal = (
       u.defaultBranchId || 
@@ -701,7 +733,40 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
     return formats.some(f => planDate.includes(f));
   });
 
+  const tabBar = (
+    <div className="grid grid-cols-2 gap-2 bg-slate-800 p-1.5 rounded-2xl border border-slate-700">
+      <button type="button" onClick={() => setTab('attendance')}
+        className={`min-h-[46px] rounded-xl text-sm font-black flex items-center justify-center gap-2 transition-all ${tab === 'attendance' ? 'bg-blue-600 text-white' : 'text-slate-300'}`}>
+        <Fingerprint size={17} /> الحضور والانصراف
+      </button>
+      <button type="button" onClick={() => { setTab('requests'); loadRequests(); }}
+        className={`min-h-[46px] rounded-xl text-sm font-black flex items-center justify-center gap-2 transition-all relative ${tab === 'requests' ? 'bg-blue-600 text-white' : 'text-slate-300'}`}>
+        <Inbox size={17} /> طلباتي
+        {unseen > 0 && (
+          <span className="min-w-[22px] h-[22px] px-1.5 rounded-full bg-red-500 text-white text-xs font-black flex items-center justify-center" aria-label={`${unseen} قرار جديد`}>{unseen}</span>
+        )}
+      </button>
+    </div>
+  );
+
+  if (tab === 'requests') {
+    return (
+      <div className="space-y-4 max-w-2xl mx-auto">
+        {tabBar}
+        <ScreenLoader>
+          <LazyRequestsPanel
+            user={user} branches={branches} jobs={jobs} holidays={holidays} syncUrl={googleSheetLink}
+            requests={myRequests} loading={reqLoading} error={reqError} reload={loadRequests}
+            onSeen={() => setUnseen(0)} logAction={logAction}
+          />
+        </ScreenLoader>
+      </div>
+    );
+  }
+
   return (
+    <div className="space-y-4">
+    {tabBar}
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2 space-y-6">
         <div className="bg-slate-800 rounded-3xl shadow-xl border border-slate-700 p-5 md:p-8 text-white relative overflow-hidden">
@@ -898,6 +963,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
           )}
         </div>
       </div>
+    </div>
     </div>
   );
 };

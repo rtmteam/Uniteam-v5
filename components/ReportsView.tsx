@@ -3,6 +3,9 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { FileSpreadsheet, Download, LogIn, LogOut, Loader2, Table, Calendar as CalendarIcon, MapPin, User as UserIcon, Briefcase, Filter, RefreshCw, ChevronRight, ChevronLeft, X, Link as LinkIcon, AlertCircle, Check, ShieldCheck, ChevronDown, Search, Eye, EyeOff, BarChart3, TrendingUp, CheckCircle, Clock } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { AppConfig } from '../types';
+import { LazyRequestsAdmin, ScreenLoader } from './LazyScreens';
+import { postRequestAction } from './requestsApi';
+import { Inbox, ChevronDown as ReqChevron } from 'lucide-react';
 
 interface ReportsViewProps {
   syncUrl: string;
@@ -154,6 +157,10 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
     }
   }, [onLogoutRef, username, logAction]);
   const [isAdminLogin, setIsAdminLogin] = useState(false);
+
+  // طلبات موظفي هذا المشرف (الخطة الشهرية والإجازة) — داخل لوحة الإدارة لها قسمها الخاص
+  const [showRequests, setShowRequests] = useState(false);
+  const [pendingRequests, setPendingRequests] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [records, setRecords] = useState<any[]>([]);
@@ -241,6 +248,10 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
            setFetchedHolidays(holidays);
         }
         setIsLoggedIn(true); 
+        if (!autoLoginAdmin) {
+          postRequestAction(activeSyncUrl, { action: 'getApproverRequests', approverUser: u, approverPass: p })
+            .then(res => { if (res.ok) setPendingRequests((res.requests || []).filter(r => r.status === 'pending').length); });
+        }
         logAction?.('تسجيل دخول متابع تقارير', `المستخدم: ${u}`);
         if (adminConfig && u === adminConfig.adminUsername && p === adminConfig.adminPassword) setIsAdminLogin(true); 
         else setIsAdminLogin(false); 
@@ -984,6 +995,27 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
         </div>
       </div>
       
+      {!autoLoginAdmin && (
+        <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-lg">
+          <button type="button" onClick={() => setShowRequests(v => !v)}
+            className="w-full min-h-[56px] px-4 md:px-6 flex items-center justify-between gap-3 text-white">
+            <span className="font-black text-sm flex items-center gap-2">
+              <Inbox size={18} className="text-blue-400" /> طلبات الموظفين
+              {pendingRequests > 0 && <span className="ut-chip ut-chip--warn" style={{ height: 24 }}>{pendingRequests} معلّق</span>}
+            </span>
+            <ReqChevron size={18} className={`text-slate-400 transition-transform ${showRequests ? 'rotate-180' : ''}`} />
+          </button>
+          {showRequests && (
+            <div className="px-4 md:px-6 pb-5">
+              <ScreenLoader>
+                <LazyRequestsAdmin syncUrl={activeSyncUrl} approverUser={username} approverPass={password}
+                  branches={fetchedBranches} onPendingCount={setPendingRequests} logAction={logAction} />
+              </ScreenLoader>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="bg-slate-800 p-4 md:p-6 rounded-3xl border border-slate-700 shadow-lg space-y-6">
         <div className="flex justify-between items-center border-b border-slate-700 pb-4">
           <h3 className="text-xs font-black text-white flex items-center gap-2 uppercase tracking-widest text-right"><Filter size={14} /> تصفية السجلات قبل التحميل</h3>

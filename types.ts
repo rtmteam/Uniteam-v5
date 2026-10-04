@@ -79,3 +79,45 @@ export interface AppConfig {
   lastUpdated?: string;
   holidays?: string[];
 }
+
+// ---------- الطلبات: الخطة الشهرية وطلب الإجازة ----------
+
+export type RequestStatus = 'pending' | 'approved' | 'modified' | 'rejected' | 'cancelled';
+
+/** يوم في الخطة الشهرية */
+export interface PlanDay {
+  date: string;       // YYYY-MM-DD
+  branchId: string;
+  branchName: string;
+  /** سبب اختيار Out Door — إلزامي لهذا الفرع وحده */
+  reason?: string;
+}
+
+/** تفاصيل طلب الإجازة */
+export interface LeaveDetails {
+  from: string;       // YYYY-MM-DD
+  to: string;         // YYYY-MM-DD
+  leaveType: string;  // اعتيادية · عارضة · مرضية · أخرى
+  reason?: string;
+}
+
+/**
+ * طلب موظف كما يخزّنه شيت Requests.
+ * items: آخر ما أرسله الموظف. approvedItems: آخر ما اعتمده المدير (الساري).
+ */
+export interface StaffRequest {
+  id: string;
+  type: 'plan' | 'leave';
+  userId: string;
+  userName: string;
+  serialNumber?: string;
+  jobTitle?: string;
+  month: string;      // YYYY-MM
+  items: PlanDay[] | LeaveDetails;
+  status: RequestStatus;
+  approvedItems: PlanDay[] | LeaveDetails | null;
+  managerNote?: string;
+  submittedAt: string;
+  decidedAt?: string;
+  decidedBy?: string;
+}
