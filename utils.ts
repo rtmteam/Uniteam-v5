@@ -57,15 +57,27 @@ export const getDeviceFingerprint = (): string => {
     } catch (e) {}
   }
 
-  // 2. الفحص والتخزين للويب مع بناء بصمة عتادية دقيقة (Hardware Fingerprint)
+  // 3. تطبيق ويندوز: معرّف مشتق من MachineGuid يحقنه الغلاف (native/windows).
+  //    ثابت عند مسح بيانات المتصفح أو إعادة تثبيت التطبيق.
+  if (win.UniteamDesktop && typeof win.UniteamDesktop.getDeviceId === 'function') {
+    try {
+      const desktopId = win.UniteamDesktop.getDeviceId();
+      if (desktopId && String(desktopId).indexOf('win_') === 0 && String(desktopId).length > 10) {
+        try { localStorage.setItem('uniteam_device_token', desktopId); } catch (e) {}
+        return desktopId;
+      }
+    } catch (e) {}
+  }
+
+  // 4. الفحص والتخزين للويب مع بناء بصمة عتادية دقيقة (Hardware Fingerprint)
   let deviceId = localStorage.getItem('uniteam_device_token');
 
   // ترقية المعرّفات القديمة إلى الصيغة المعتمدة.
   // نسخ سابقة من التطبيق ولّدت معرّفات ببادئات مختلفة (dev_ / native_dev_ / native_hw_)،
   // وهي محفوظة في متصفحات الموظفين ولا يمسحها تصفير الأجهزة من لوحة المشرف.
   // بدون هذا السطر ستعود البادئة القديمة إلى الشيت عند إعادة التسجيل.
-  // الصيغتان المعتمدتان فقط: android_ من التطبيق، و hw_ من المتصفح.
-  if (deviceId && !/^(hw_|android_)/.test(deviceId)) {
+  // الصيغ المعتمدة فقط: android_ من تطبيق أندرويد، win_ من تطبيق ويندوز، و hw_ من المتصفح.
+  if (deviceId && !/^(hw_|android_|win_)/.test(deviceId)) {
     try { localStorage.removeItem('uniteam_device_token'); } catch (e) {}
     deviceId = null;
   }

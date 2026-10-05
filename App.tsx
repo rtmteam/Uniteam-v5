@@ -24,6 +24,8 @@ const describeDevice = (): string => {
   const ua = (navigator.userAgent || '').toLowerCase();
   const b = (window as any).AndroidBridge;
   if (b && typeof b.getAndroidId === 'function') return 'تطبيق أندرويد';
+  const d = (window as any).UniteamDesktop;
+  if (d && typeof d.getDeviceId === 'function') return 'تطبيق ويندوز';
   if (/android/.test(ua)) return 'متصفح أندرويد';
   if (/iphone|ipad|ipod/.test(ua) || (/macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'آيفون';
   if (/windows/.test(ua)) return 'ويندوز';
