@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Inbox, CalendarDays, Plane, RefreshCw, Loader2, Check, X, Plus, Trash2, Lock, AlertCircle, ChevronDown } from 'lucide-react';
 import type { Branch, StaffRequest } from '../types';
 import PlanReport from './PlanReport';
+import { refreshDesktopNotifier } from './desktopNotify';
 import {
   postRequestAction, todayIso, lastDayOfMonth, formatDay, formatShort, formatMonth, daysBetween,
   STATUS_META, asPlan, asLeave, dayCount
@@ -53,6 +54,8 @@ export default function RequestsAdmin({ syncUrl, approverUser, approverPass, bra
 
   const pendingCount = requests.filter(r => r.status === 'pending').length;
   useEffect(() => { onPendingCount?.(pendingCount); }, [pendingCount, onPendingCount]);
+  // تطبيق ويندوز: تحديث العلامة الحمراء فور تغيّر عدد المعلّق (بعد موافقة أو رفض)
+  useEffect(() => { refreshDesktopNotifier(); }, [pendingCount]);
 
   const visible = requests.filter(r =>
     (statusFilter === 'all' || r.status === 'pending') && (typeFilter === 'all' || r.type === typeFilter));

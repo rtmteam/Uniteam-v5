@@ -13,19 +13,22 @@
 // - التنزيلات تُحفظ في مجلد التنزيلات مع إشعار وفتح المجلد.
 // - أمر notify يستدعيه الموقع لعرض إشعارات ويندوز (components/desktopNotify.ts).
 // - تحديث تلقائي موقَّع من إصدار windows-updates على GitHub (انظر run_updater).
+// - علامة الطلبات المعلّقة: نقطة حمراء على أيقونة الساعة + العدد على زر شريط المهام (set_badge).
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use sha2::{Digest, Sha256};
+use tauri::image::Image;
 use tauri::ipc::CapabilityBuilder;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::webview::DownloadEvent;
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{AppHandle, Manager, UserAttentionType, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_updater::UpdaterExt;
 
@@ -78,6 +81,109 @@ fn notify(app: AppHandle, title: String, body: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+// ---------------- علامة الطلبات المعلّقة ----------------
+
+const TRAY_ID: &str = "uniteam-tray";
+static BADGE_COUNT: AtomicU32 = AtomicU32::new(0);
+static TRAY_ICONS: OnceLock<(Image<'static>, Image<'static>)> = OnceLock::new();
+
+/// صور العدد لزر شريط المهام (native/windows/badges)
+const BADGE_PNGS: [&[u8]; 10] = [
+    include_bytes!("../badges/1.png"),
+    include_bytes!("../badges/2.png"),
+    include_bytes!("../badges/3.png"),
+    include_bytes!("../badges/4.png"),
+    include_bytes!("../badges/5.png"),
+    include_bytes!("../badges/6.png"),
+    include_bytes!("../badges/7.png"),
+    include_bytes!("../badges/8.png"),
+    include_bytes!("../badges/9.png"),
+    include_bytes!("../badges/9plus.png"),
+];
+
+/// نسخة من أيقونة التطبيق عليها نقطة حمراء بإطار أبيض في الزاوية العلوية
+fn with_red_dot(base: &Image<'_>) -> Image<'static> {
+    let (w, h) = (base.width(), base.height());
+    let mut px = base.rgba().to_vec();
+    let size = w.min(h) as f32;
+    let r = size * 0.24;
+    let border = (size * 0.06).max(1.0);
+    let (cx, cy) = (w as f32 - r - border, r + border);
+    for y in 0..h {
+        for x in 0..w {
+            let dx = x as f32 + 0.5 - cx;
+            let dy = y as f32 + 0.5 - cy;
+            let d = (dx * dx + dy * dy).sqrt();
+            let color = if d <= r {
+                Some([220u8, 38, 38, 255])
+            } else if d <= r + border {
+                Some([255u8, 255, 255, 255])
+            } else {
+                None
+            };
+            if let Some(c) = color {
+                let i = ((y * w + x) * 4) as usize;
+                px[i..i + 4].copy_from_slice(&c);
+            }
+        }
+    }
+    Image::new_owned(px, w, h)
+}
+
+fn badge_tooltip(count: u32) -> String {
+    match count {
+        0 => format!("Uniteam {}", env!("CARGO_PKG_VERSION")),
+        1 => "Uniteam — طلب واحد معلّق".to_string(),
+        2 => "Uniteam — طلبان معلّقان".to_string(),
+        3..=10 => format!("Uniteam — {} طلبات معلّقة", count),
+        _ => format!("Uniteam — {} طلباً معلّقاً", count),
+    }
+}
+
+/// العدد على زر شريط المهام. يُعاد تطبيقه عند إظهار النافذة لأن ويندوز يمسحه عند إخفائها
+fn apply_overlay(app: &AppHandle) {
+    #[cfg(windows)]
+    {
+        if let Some(w) = app.get_webview_window("main") {
+            let count = BADGE_COUNT.load(Ordering::SeqCst) as usize;
+            let img = if count == 0 {
+                None
+            } else {
+                Image::from_bytes(BADGE_PNGS[count.min(10) - 1]).ok()
+            };
+            let _ = w.set_overlay_icon(img);
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (app, &BADGE_PNGS);
+    }
+}
+
+/// يستدعيه الموقع مع كل فحص للطلبات (components/desktopNotify.ts). 0 يُخفي العلامة
+#[tauri::command]
+fn set_badge(app: AppHandle, count: u32) {
+    let count = count.min(9999);
+    let previous = BADGE_COUNT.swap(count, Ordering::SeqCst);
+
+    if let (Some(tray), Some((plain, dotted))) = (app.tray_by_id(TRAY_ID), TRAY_ICONS.get()) {
+        let icon = if count > 0 { dotted.clone() } else { plain.clone() };
+        let _ = tray.set_icon(Some(icon));
+        let _ = tray.set_tooltip(Some(badge_tooltip(count)));
+    }
+
+    apply_overlay(&app);
+
+    // وميض زر شريط المهام مرة عند زيادة العدد، إن كانت النافذة ظاهرة وليست في المقدّمة
+    if count > previous {
+        if let Some(w) = app.get_webview_window("main") {
+            if w.is_visible().unwrap_or(false) && !w.is_focused().unwrap_or(true) {
+                let _ = w.request_user_attention(Some(UserAttentionType::Informational));
+            }
+        }
+    }
+}
+
 fn show_notification(app: &AppHandle, title: &str, body: &str) {
     let _ = app.notification().builder().title(title).body(body).show();
 }
@@ -89,6 +195,7 @@ fn show_main(app: &AppHandle) {
         let _ = w.unminimize();
         let _ = w.set_focus();
     }
+    apply_overlay(app);
 }
 
 /// اسم غير مستعمل في المجلد: تقرير.xlsx ← تقرير (1).xlsx ← تقرير (2).xlsx …
@@ -239,13 +346,14 @@ fn main() {
         }))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![notify])
+        .invoke_handler(tauri::generate_handler![notify, set_badge])
         .setup(move |app| {
             app.add_capability(
                 CapabilityBuilder::new("uniteam-site")
                     .remote(remote_pattern.clone())
                     .window("main")
-                    .permission("allow-notify"),
+                    .permission("allow-notify")
+                    .permission("allow-set-badge"),
             )?;
 
             // ---------- بعد تحديث تلقائي: يبدأ مخفياً بجانب الساعة كما كان ----------
@@ -266,8 +374,8 @@ fn main() {
             let open_item = MenuItem::with_id(app, "open", "فتح Uniteam", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "خروج", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open_item, &quit_item])?;
-            let mut tray = TrayIconBuilder::with_id("uniteam-tray")
-                .tooltip(format!("Uniteam {}", env!("CARGO_PKG_VERSION")))
+            let mut tray = TrayIconBuilder::with_id(TRAY_ID)
+                .tooltip(badge_tooltip(0))
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -286,7 +394,10 @@ fn main() {
                     }
                 });
             if let Some(icon) = app.default_window_icon() {
-                tray = tray.icon(icon.clone());
+                let plain = icon.clone().to_owned();
+                let dotted = with_red_dot(&plain);
+                let _ = TRAY_ICONS.set((plain.clone(), dotted));
+                tray = tray.icon(plain);
             }
             tray.build(app)?;
 

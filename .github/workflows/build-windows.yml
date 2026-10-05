@@ -23,7 +23,7 @@ on:
       version:
         description: 'رقم الإصدار بصيغة 1.0.0 (زِده مع كل نسخة جديدة)'
         required: false
-        default: '1.1.0'
+        default: '1.1.1'
 
 jobs:
   build:

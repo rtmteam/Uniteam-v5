@@ -54,6 +54,14 @@ const describe = (r: StaffRequest): string => {
 
 const notify = (title: string, body: string) => desktopInvoke('notify', { title, body });
 
+/** العلامة الحمراء على أيقونة الساعة وزر شريط المهام = عدد الطلبات المعلّقة (0 يُخفيها) */
+const setBadge = (count: number) => desktopInvoke('set_badge', { count: Math.max(0, Math.floor(count)) });
+
+let runNow: (() => void) | null = null;
+
+/** فحص فوري خارج الموعد — بعد موافقة المدير أو رفضه، لتختفي العلامة دون انتظار */
+export const refreshDesktopNotifier = (): void => { if (runNow) runNow(); };
+
 /** يبدأ الفحص الدوري ويعيد دالة الإيقاف. لا يفعل شيئاً خارج تطبيق ويندوز */
 export function startDesktopNotifier(getSyncUrl: () => string): () => void {
   if (!isDesktopApp()) return () => {};
@@ -67,7 +75,8 @@ export function startDesktopNotifier(getSyncUrl: () => string): () => void {
     try {
       const url = getSyncUrl();
       const creds = credentials();
-      if (!url || creds.length === 0 || !navigator.onLine) return;
+      if (!url || creds.length === 0) { await setBadge(0); return; }
+      if (!navigator.onLine) return;
 
       const all = new Map<string, StaffRequest>();
       let anyOk = false;
@@ -86,6 +95,7 @@ export function startDesktopNotifier(getSyncUrl: () => string): () => void {
       writeSeen(next);
 
       const pending = Array.from(all.values()).filter(r => r.status === 'pending');
+      await setBadge(pending.length);
 
       // أول تشغيل على هذا الجهاز: ملخّص واحد بدل سيل إشعارات قديمة
       if (!seen) {
@@ -117,5 +127,6 @@ export function startDesktopNotifier(getSyncUrl: () => string): () => void {
 
   const first = setTimeout(tick, FIRST_DELAY_MS);
   const timer = setInterval(tick, POLL_MS);
-  return () => { stopped = true; clearTimeout(first); clearInterval(timer); };
+  runNow = () => { void tick(); };
+  return () => { stopped = true; runNow = null; clearTimeout(first); clearInterval(timer); };
 }
