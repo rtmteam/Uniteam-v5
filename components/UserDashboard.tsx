@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Branch, AttendanceRecord, VisitPlan, Job, StaffRequest } from '../types';
-import { MapPin, Clock, CheckCircle, AlertCircle, RotateCcw, Cloud, FileText, Navigation, Calendar, Inbox, Fingerprint } from 'lucide-react';
+import { MapPin, Clock, CheckCircle, AlertCircle, RotateCcw, RefreshCw, Cloud, FileText, Navigation, Calendar, Inbox, Fingerprint } from 'lucide-react';
 import { LazyRequestsPanel, ScreenLoader } from './LazyScreens';
 import { postRequestAction, employeeAuth, unseenDecisions } from './requestsApi';
 import { calculateDistance, getDeviceFingerprint, getEgyptTime, getRealNetworkTime, checkDeveloperOptionsStatus, checkMockLocationStatus } from '../utils';
@@ -139,6 +139,9 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
   // Continuous Location State (Working in background)
   const [liveLocation, setLiveLocation] = useState<{ lat: number, lng: number, accuracy: number, timestamp: number } | null>(null);
   const watchIdRef = useRef<number | null>(null);
+  // يُسند داخل تأثير المتابعة أدناه، ويستعمله زر «تحديث الموقع» لإعادة تشغيلها
+  const startWatchingRef = useRef<() => void>(() => {});
+  const [isRefreshingLocation, setIsRefreshingLocation] = useState(false);
 
   /**
    * سبب تعذّر تتبّع الموقع في الخلفية.
@@ -215,6 +218,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
       );
     };
 
+    startWatchingRef.current = startWatching;
     startWatching();
 
     return () => {
@@ -232,6 +236,39 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
       }
     }
   }, [branches, user.defaultBranchId, user.defaultBranch, user.assignedBranch, user.branch]);
+
+  /**
+   * زر «تحديث الموقع»: يتخلّص من القراءة العالقة أو غير الدقيقة.
+   * يوقف المتابعة، يمسح الموقع الحالي، يطلب قراءة جديدة بلا ذاكرة مؤقتة
+   * (maximumAge: 0)، ثم يعيد تشغيل المتابعة. أخطاء القراءة تظهر عبر المتابعة نفسها.
+   */
+  const refreshLocation = () => {
+    if (!navigator.geolocation || isRefreshingLocation) return;
+    setIsRefreshingLocation(true);
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    setLiveLocation(null);
+    setGeoError(null);
+    const restart = () => {
+      setIsRefreshingLocation(false);
+      if (watchIdRef.current === null) startWatchingRef.current();
+    };
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLiveLocation({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          timestamp: pos.timestamp
+        });
+        restart();
+      },
+      () => restart(),
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+    );
+  };
 
   const formatTimeDisplay = (timeStr: string | undefined) => {
     if (!timeStr) return '--:--';
@@ -852,7 +889,19 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
             )}
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <label className="text-xs font-bold text-slate-400 me-2">موقع التسجيل</label>
+                <div className="flex items-center gap-1">
+                  <label className="text-xs font-bold text-slate-400 me-1">موقع التسجيل</label>
+                  <button
+                    type="button"
+                    onClick={refreshLocation}
+                    disabled={isRefreshingLocation}
+                    className="inline-flex items-center justify-center w-10 h-10 rounded-full text-slate-400 hover:text-white hover:bg-slate-700/60 transition-colors disabled:opacity-60"
+                    title="تحديث الموقع"
+                    aria-label="تحديث الموقع"
+                  >
+                    <RefreshCw size={16} className={isRefreshingLocation ? 'animate-spin' : ''} />
+                  </button>
+                </div>
 
                 {/* إشارة المسافة — بسيطة كإشارة «متصل» في الترويسة:
                     نقطة خضراء داخل النطاق، صفراء خارجه، والرقم وحده بلا تفاصيل. */}

@@ -2,7 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { User, AppConfig, Job, Branch } from '../types';
 import { UserPlus, LogIn, LogOut, ShieldAlert, Briefcase, Loader2, Link as LinkIcon, Smartphone, AlertCircle, WifiOff, MapPin, Eye, EyeOff, FileSpreadsheet, ArrowRight, KeyRound } from 'lucide-react';
-import { getDeviceFingerprint } from '../utils';
+import { getDeviceFingerprint, getSavedLogin, setSavedLogin, clearSavedLogin } from '../utils';
 import { LogoMark } from './Logo';
 // التقارير تُحمَّل عند فتح تبويبها فقط — انظر LazyScreens.tsx
 import { LazyReportsView, ScreenLoader } from './LazyScreens';
@@ -107,8 +107,11 @@ export default function Login({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [selectedJob, setSelectedJob] = useState('');
   const [defaultBranch, setDefaultBranch] = useState('');
-  const [adminUsername, setAdminUsername] = useState('');
-  const [adminPassword, setAdminPassword] = useState('');
+  // «تذكرني»: تُملأ بيانات المسؤول المحفوظة على هذا الجهاز تلقائياً
+  const [savedAdmin] = useState(() => getSavedLogin('admin'));
+  const [adminUsername, setAdminUsername] = useState(savedAdmin?.user || '');
+  const [adminPassword, setAdminPassword] = useState(savedAdmin?.pass || '');
+  const [rememberAdmin, setRememberAdmin] = useState(!!savedAdmin);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showRegPassword, setShowRegPassword] = useState(false);
@@ -569,6 +572,8 @@ export default function Login({
       }
     }
 
+    if (rememberAdmin) setSavedLogin('admin', user, pass);
+    else clearSavedLogin('admin');
     logAction('تسجيل دخول مسؤول', `المسؤول: ${user}`);
     onLogin({ id: 'admin-id', fullName: 'المسؤول', nationalId: '000', role: 'admin' });
     setIsLoading(false);
@@ -859,6 +864,15 @@ export default function Login({
                   {showAdminPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
+              <label className="flex items-center gap-3 min-h-[44px] px-1 text-sm text-slate-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={rememberAdmin}
+                  onChange={e => { setRememberAdmin(e.target.checked); if (!e.target.checked) clearSavedLogin('admin'); }}
+                  className="w-5 h-5 accent-blue-600 shrink-0"
+                />
+                تذكرني على هذا الجهاز
+              </label>
               <button type="submit" disabled={isLoading} className="w-full bg-blue-600 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2">
                 <ShieldAlert size={20} /> دخول لوحة التحكم
               </button>

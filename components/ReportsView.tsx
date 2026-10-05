@@ -5,6 +5,8 @@ import * as XLSX from 'xlsx';
 import { AppConfig } from '../types';
 import { LazyRequestsAdmin, ScreenLoader } from './LazyScreens';
 import { postRequestAction } from './requestsApi';
+import { getSavedLogin, setSavedLogin, clearSavedLogin } from '../utils';
+import { setSessionApprover } from './desktopNotify';
 import { Inbox, ChevronDown as ReqChevron } from 'lucide-react';
 
 interface ReportsViewProps {
@@ -139,8 +141,11 @@ const CustomDatePicker = ({ label, value, onChange, placeholder }: { label: stri
 
 export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUpdateConfig, logAction, onLoginStateChange, onLogoutRef, autoLoginAdmin }: ReportsViewProps) {
   const [localSyncUrl, setLocalSyncUrl] = useState(initialSyncUrl || localStorage.getItem('attendance_temp_sync_url') || '');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  // «تذكرني»: بيانات حساب التقارير المحفوظة على هذا الجهاز (لا تُستعمل في وضع المسؤول)
+  const [savedReports] = useState(() => (autoLoginAdmin ? null : getSavedLogin('reports')));
+  const [username, setUsername] = useState(savedReports?.user || '');
+  const [password, setPassword] = useState(savedReports?.pass || '');
+  const [rememberMe, setRememberMe] = useState(!!savedReports);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
@@ -152,6 +157,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
     if (onLogoutRef) {
       onLogoutRef.current = () => {
         setIsLoggedIn(false);
+        setSessionApprover(null);
         logAction?.('تسجيل خروج متابع تقارير', `المستخدم: ${username}`);
       };
     }
@@ -224,9 +230,15 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
       const response = await fetch(`${activeSyncUrl}?action=getReportData&user=${encodeURIComponent(u)}&pass=${encodeURIComponent(p)}`);
       const data = await response.json();
       if (data.error) { 
+        // كلمة مرور محفوظة لم تعد صحيحة (غيّرها المسؤول مثلاً) — تُمسح حتى لا تتكرر المحاولة
+        if (showLoading && !autoLoginAdmin && rememberMe) { clearSavedLogin('reports'); setRememberMe(false); }
         setError('بيانات الدخول غير صحيحة'); 
         if (showLoading) setIsLoggedIn(false); 
       } else { 
+        if (showLoading && !autoLoginAdmin) {
+          if (rememberMe) setSavedLogin('reports', u, p); else clearSavedLogin('reports');
+        }
+        setSessionApprover({ user: u, pass: p });
         // Handle new response format { records: [], users: [] }
         if (Array.isArray(data)) {
            // Backward compatibility
@@ -268,13 +280,22 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
   useEffect(() => {
     if (autoLoginAdmin) {
       const adminUser = adminConfig?.adminUsername || 'admin';
-      const adminPass = adminConfig?.adminPassword || 'Ba522129';
+      const adminPass = adminConfig?.adminPassword || '';
       setUsername(adminUser);
       setPassword(adminPass);
       setIsAdminLogin(true);
       fetchData(true, adminUser, adminPass);
     }
   }, [autoLoginAdmin, adminConfig?.syncUrl]);
+
+  // دخول تلقائي ببيانات «تذكرني» المحفوظة
+  useEffect(() => {
+    if (!autoLoginAdmin && savedReports && activeSyncUrl) {
+      fetchData(true, savedReports.user, savedReports.pass);
+    }
+    // مرة واحدة عند فتح الشاشة
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleUnlink = () => {
     if (window.confirm('هل أنت متأكد من رغبتك في فك الارتباط بالشركة الحالية؟')) {
@@ -914,7 +935,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
                 type="button" 
                 onClick={() => {
                   const adminUser = adminConfig?.adminUsername || 'admin';
-                  const adminPass = adminConfig?.adminPassword || 'Ba522129';
+                  const adminPass = adminConfig?.adminPassword || '';
                   fetchData(true, adminUser, adminPass);
                 }}
                 className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-black shadow-lg cursor-pointer transition-all active:scale-95 flex items-center gap-2"
@@ -961,6 +982,15 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
                 </button>
               </div>
             </div>
+            <label className="flex items-center gap-3 min-h-[44px] px-1 text-sm text-slate-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={e => { setRememberMe(e.target.checked); if (!e.target.checked) clearSavedLogin('reports'); }}
+                className="w-5 h-5 accent-blue-600 shrink-0"
+              />
+              تذكرني على هذا الجهاز
+            </label>
             {error && (
               <div className="p-3 bg-red-900/20 border border-red-500/50 rounded-xl text-red-400 text-[10px] font-bold flex gap-2 items-center">
                 <AlertCircle size={16} /><span>{error}</span>

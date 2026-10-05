@@ -8,6 +8,7 @@ import UserDashboard from './components/UserDashboard';
 import { ShieldCheck, User as UserIcon, Cloud, CloudOff, RefreshCw, FileSpreadsheet, Home, Download, Share, PlusSquare, X, Wifi, LogOut, ShieldAlert, AlertTriangle, Smartphone, Settings } from 'lucide-react';
 import { syncTimeWithServer, checkDeveloperOptionsStatus, getDeviceFingerprint } from './utils';
 import { LogoMark } from './components/Logo';
+import { startDesktopNotifier, setSessionApprover } from './components/desktopNotify';
 
 // ==========================================
 // المصدر الرئيسي الوحيد لكلمة مرور المسؤول (Admin Password)
@@ -503,6 +504,22 @@ const App: React.FC = () => {
     }
   }, [config.syncUrl, config.auditLogUrl, currentUser]);
 
+  // إشعارات طلبات الموظفين في تطبيق ويندوز (لا تعمل في المتصفح أو الهاتف)
+  const syncUrlRef = useRef('');
+  useEffect(() => {
+    syncUrlRef.current = config.syncUrl || (() => {
+      try { return localStorage.getItem('attendance_temp_sync_url') || ''; } catch (e) { return ''; }
+    })();
+  }, [config.syncUrl]);
+  useEffect(() => startDesktopNotifier(() => syncUrlRef.current), []);
+
+  // جلسة المسؤول المفتوحة تصلح لفحص الطلبات كذلك
+  useEffect(() => {
+    if (currentUser && currentUser.role === 'admin' && config.adminUsername && config.adminPassword) {
+      setSessionApprover({ user: config.adminUsername, pass: config.adminPassword });
+    }
+  }, [currentUser, config.adminUsername, config.adminPassword]);
+
   const handleLogin = (user: User) => {
     setCurrentUser(user);
     localStorage.setItem('attendance_current_user', JSON.stringify(user));
@@ -513,6 +530,7 @@ const App: React.FC = () => {
       logAction('تسجيل خروج', `المستخدم: ${currentUser.fullName} (${currentUser.role})`);
     }
     localStorage.removeItem('attendance_current_user');
+    setSessionApprover(null);
     setCurrentUser(null);
     setActiveView('main');
   };

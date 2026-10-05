@@ -5,6 +5,13 @@ name: Build Windows App
 #
 # التطبيق غلاف يفتح الموقع المنشور، فتعديلات الواجهة تصل تلقائياً
 # ولا يلزم بناء جديد إلا إذا تغيّر شيء في native/windows أو هذا الملف.
+#
+# التحديث التلقائي (منذ 1.1.0): كل بناء يُوقَّع بمفتاح المشروع وينشر ملف
+# latest.json على إصدار ثابت اسمه windows-updates، فتلتقطه الأجهزة المثبّت عليها
+# التطبيق خلال ٦ ساعات. يلزم سرّان في Settings ← Secrets and variables ← Actions:
+#   TAURI_SIGNING_PRIVATE_KEY           محتوى ملف uniteam-updater.key كاملاً
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  كلمة مرور المفتاح
+# زِد رقم الإصدار مع كل بناء، وإلا لن تعدّه الأجهزة تحديثاً.
 
 on:
   workflow_dispatch:
@@ -16,7 +23,7 @@ on:
       version:
         description: 'رقم الإصدار بصيغة 1.0.0 (زِده مع كل نسخة جديدة)'
         required: false
-        default: '1.0.0'
+        default: '1.1.0'
 
 jobs:
   build:
@@ -28,6 +35,10 @@ jobs:
     defaults:
       run:
         shell: bash
+
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
     steps:
       - name: Checkout repository
@@ -69,13 +80,27 @@ jobs:
             echo "::error::رقم الإصدار يجب أن يكون بصيغة 1.0.0"; exit 1
           fi
           echo "APP_VERSION=$VER" >> "$GITHUB_ENV"
+
+          SIGN=1
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            SIGN=0
+            echo "::warning title=بلا تحديث تلقائي::السر TAURI_SIGNING_PRIVATE_KEY غير موجود. سيُبنى ملف التثبيت، لكن الأجهزة لن تتحدث تلقائياً."
+          fi
+          echo "SIGN_UPDATES=$SIGN" >> "$GITHUB_ENV"
+
+          UPDATE_URL="https://github.com/${{ github.repository }}/releases/download/windows-updates/latest.json"
           node -e "
             const fs = require('fs');
             const p = 'native/windows/tauri.conf.json';
             const c = JSON.parse(fs.readFileSync(p, 'utf8'));
             c.version = process.argv[1];
+            c.bundle.createUpdaterArtifacts = process.argv[2] === '1';
+            c.plugins.updater.endpoints = [process.argv[3]];
             fs.writeFileSync(p, JSON.stringify(c, null, 2));
-          " "$VER"
+          " "$VER" "$SIGN" "$UPDATE_URL"
+
+      - name: Sync Cargo version
+        run: sed -i "0,/^version = \".*\"/s//version = \"${APP_VERSION}\"/" native/windows/Cargo.toml && grep -m1 '^version' native/windows/Cargo.toml
 
       # ================= الأيقونات =================
       # من المصدر الوحيد resources/icon.png، كما في الـ APK
@@ -94,6 +119,10 @@ jobs:
           EXE=$(ls native/windows/target/release/bundle/nsis/*.exe | head -n 1)
           if [ -z "$EXE" ]; then echo "::error::لم يُعثر على ملف التثبيت"; exit 1; fi
           cp "$EXE" output/Uniteam-Setup.exe
+          if [ "$SIGN_UPDATES" = "1" ]; then
+            if [ ! -f "$EXE.sig" ]; then echo "::error::لم يُنشأ ملف التوقيع $EXE.sig"; exit 1; fi
+            cp "$EXE.sig" output/Uniteam-Setup.exe.sig
+          fi
           ls -la output
 
       - name: Upload artifact
@@ -118,6 +147,35 @@ jobs:
           fi
           echo "EXE_URL=https://github.com/${{ github.repository }}/releases/download/$TAG/Uniteam-Setup.exe" >> "$GITHUB_ENV"
 
+      # ================= التحديث التلقائي =================
+      # latest.json يشير إلى نفس ملف التثبيت المنشور أعلاه، ومعه توقيعه
+      - name: Publish update manifest
+        if: env.SIGN_UPDATES == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node -e "
+            const fs = require('fs');
+            const sig = fs.readFileSync('output/Uniteam-Setup.exe.sig', 'utf8').trim();
+            const entry = { signature: sig, url: process.argv[2] };
+            const manifest = {
+              version: process.argv[1],
+              notes: 'Uniteam ' + process.argv[1],
+              pub_date: new Date().toISOString(),
+              platforms: { 'windows-x86_64': entry, 'windows-x86_64-nsis': entry }
+            };
+            fs.writeFileSync('output/latest.json', JSON.stringify(manifest, null, 2));
+          " "$APP_VERSION" "$EXE_URL"
+          cat output/latest.json
+
+          if ! gh release view windows-updates >/dev/null 2>&1; then
+            gh release create windows-updates \
+              --title "تحديثات Uniteam لويندوز (لا تحذفه)" \
+              --notes "يقرأ منه التطبيق المثبّت ملف latest.json ليعرف آخر إصدار. يُحدَّث تلقائياً مع كل بناء." \
+              --prerelease
+          fi
+          gh release upload windows-updates output/latest.json --clobber
+
       - name: Summary
         if: success()
         run: |
@@ -137,6 +195,12 @@ jobs:
             echo "\`${EXE_URL}\`"
             echo ""
             echo "عند أول تثبيت يظهر تحذير ويندوز «تطبيق غير معروف»: اضغط «مزيد من المعلومات» ثم «تشغيل على أي حال»."
+            echo ""
+            if [ "$SIGN_UPDATES" = "1" ]; then
+              echo "**التحديث التلقائي:** نُشر \`latest.json\` على إصدار \`windows-updates\` — الأجهزة المثبّت عليها إصدار أقدم ستتحدث خلال ٦ ساعات."
+            else
+              echo "**تنبيه:** لم يُفعَّل التحديث التلقائي لهذا البناء (السر TAURI_SIGNING_PRIVATE_KEY غير موجود)."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Failure hint

@@ -32,3 +32,6 @@ native/windows/target/
 native/windows/icons/
 native/windows/gen/
 native/windows/Cargo.lock
+
+# مفتاح توقيع تحديثات ويندوز — سرّي، مكانه GitHub Secrets فقط
+*.key

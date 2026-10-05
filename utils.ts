@@ -404,3 +404,55 @@ export function getEgyptTime(dateInput?: Date | number | string): Date {
   return d;
 }
 
+
+// ---------------- «تذكرني على هذا الجهاز» ----------------
+// بيانات الدخول المحفوظة للمسؤول وحسابات التقارير.
+// تُحفظ على الجهاز نفسه فقط، وبترميز يمنع قراءتها بالعين لا تشفيراً حقيقياً.
+// لا تُحفظ إلا إذا اختار المستخدم «تذكرني»، وإلغاء الخانة يمسحها فوراً.
+
+export type SavedLoginKind = 'admin' | 'reports';
+export interface SavedLogin { user: string; pass: string }
+
+const SAVED_LOGIN_PREFIX = 'uniteam_saved_login_';
+
+const encodeLogin = (v: SavedLogin): string =>
+  btoa(unescape(encodeURIComponent(JSON.stringify(v)))).split('').reverse().join('');
+
+const decodeLogin = (s: string): SavedLogin | null => {
+  try {
+    const v = JSON.parse(decodeURIComponent(escape(atob(s.split('').reverse().join('')))));
+    if (v && typeof v.user === 'string' && typeof v.pass === 'string' && v.user && v.pass) return v;
+  } catch (e) { /* قيمة تالفة */ }
+  return null;
+};
+
+export const getSavedLogin = (kind: SavedLoginKind): SavedLogin | null => {
+  try {
+    const raw = localStorage.getItem(SAVED_LOGIN_PREFIX + kind);
+    return raw ? decodeLogin(raw) : null;
+  } catch (e) { return null; }
+};
+
+export const setSavedLogin = (kind: SavedLoginKind, user: string, pass: string): void => {
+  try { localStorage.setItem(SAVED_LOGIN_PREFIX + kind, encodeLogin({ user, pass })); } catch (e) { /* التخزين محجوب */ }
+};
+
+export const clearSavedLogin = (kind: SavedLoginKind): void => {
+  try { localStorage.removeItem(SAVED_LOGIN_PREFIX + kind); } catch (e) { /* التخزين محجوب */ }
+};
+
+// ---------------- تطبيق ويندوز ----------------
+
+/** هل الصفحة تعمل داخل تطبيق ويندوز (الغلاف في native/windows) */
+export const isDesktopApp = (): boolean => {
+  const d = (window as any).UniteamDesktop;
+  return !!(d && typeof d.getDeviceId === 'function');
+};
+
+/** استدعاء دالة في غلاف ويندوز. يعيد null خارج التطبيق أو عند الفشل */
+export const desktopInvoke = async (cmd: string, args?: Record<string, unknown>): Promise<any> => {
+  const t = (window as any).__TAURI__;
+  const invoke = t && t.core && typeof t.core.invoke === 'function' ? t.core.invoke : null;
+  if (!invoke) return null;
+  try { return await invoke(cmd, args || {}); } catch (e) { console.warn('desktop invoke failed:', cmd, e); return null; }
+};
