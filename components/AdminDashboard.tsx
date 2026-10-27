@@ -617,7 +617,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   {[...allUsers].sort((a, b) => (b.status === 'pending' ? 1 : 0) - (a.status === 'pending' ? 1 : 0)).map(user => {
                    // Calculate device count properly considering both legacy and new array
                    const deviceCount = user.deviceIds ? user.deviceIds.length : (user.deviceId ? 1 : 0);
-                   const allowedCount = user.allowedDeviceCount || 1;
+                   // 0 = بلا حد: يدخل من أي جهاز غير مربوط بموظف آخر
+                   const allowedCount = user.allowedDeviceCount === 0 ? 0 : (user.allowedDeviceCount || 1);
 
                    return (
                    <tr key={user.id} className="border-b border-slate-700/50 hover:bg-slate-900/30 transition-all text-center">
@@ -669,9 +670,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                      </td>
                      <td data-label="الأجهزة المرتبطة" className="py-4 px-2">
                         {editingUserId === user.id ? (
-                           <div className="flex items-center gap-1 justify-center">
-                             <span className="text-[10px] text-slate-500">الحد:</span>
-                             <input type="number" min="1" max="10" className="bg-slate-900 border border-blue-500 rounded px-2 py-1 text-xs w-12 text-center text-white" value={editUserData.allowedDeviceCount || 1} onChange={e => setEditUserData({...editUserData, allowedDeviceCount: parseInt(e.target.value) || 1})} />
+                           <div className="flex flex-col items-center gap-1">
+                             <div className="flex items-center gap-1 justify-center">
+                               <span className="text-[10px] text-slate-500">الحد:</span>
+                               {editUserData.allowedDeviceCount === 0 ? (
+                                 <span className="text-sm font-black text-blue-300 w-12 text-center">∞</span>
+                               ) : (
+                                 <input type="number" min="1" max="10" className="bg-slate-900 border border-blue-500 rounded px-2 py-1 text-xs w-12 text-center text-white" value={editUserData.allowedDeviceCount || 1} onChange={e => setEditUserData({...editUserData, allowedDeviceCount: parseInt(e.target.value) || 1})} />
+                               )}
+                             </div>
+                             <label className="flex items-center gap-1 text-[10px] text-slate-300 font-bold cursor-pointer select-none">
+                               <input type="checkbox" className="accent-blue-600"
+                                 checked={editUserData.allowedDeviceCount === 0}
+                                 onChange={e => setEditUserData({ ...editUserData, allowedDeviceCount: e.target.checked ? 0 : 1 })} />
+                               بلا حد (أي جهاز)
+                             </label>
                            </div>
                         ) : (
                            <div className="flex flex-col items-center gap-1.5">
@@ -679,7 +692,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                onClick={() => setDevicesOpenId(devicesOpenId === user.id ? null : user.id)}
                                title={deviceCount > 0 ? 'عرض الأجهزة المربوطة' : 'لا أجهزة مربوطة'}
                                className={`flex items-center justify-center gap-1 px-3 py-1 rounded-full text-[9px] font-black border mx-auto w-fit ${deviceCount > 0 ? 'bg-green-600/10 text-green-400 border-green-900/30 hover:border-green-500 cursor-pointer' : 'bg-slate-900 text-slate-500 border-slate-700'}`}>
-                               <Smartphone size={10} /> {deviceCount} / {allowedCount}
+                               <Smartphone size={10} /> {deviceCount} / {allowedCount === 0 ? '∞' : allowedCount}
                              </button>
                              {/* فك ارتباط جهاز واحد بعينه — بقية الأجهزة تبقى */}
                              {devicesOpenId === user.id && (user.deviceIds || []).map((d, i) => (
@@ -733,7 +746,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     ...user,
                                     checkInTime: normalizeToTimeInput(user.checkInTime),
                                     checkOutTime: normalizeToTimeInput(user.checkOutTime),
-                                    allowedDeviceCount: user.allowedDeviceCount || 1
+                                    allowedDeviceCount: user.allowedDeviceCount === 0 ? 0 : (user.allowedDeviceCount || 1)
                                   });
                                 }} className="text-blue-400 hover:bg-blue-900/20 p-1.5 rounded"><Edit2 size={16}/></button>
 
