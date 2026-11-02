@@ -55,6 +55,110 @@ function buildCell(list: Entry[]): Cell | null {
   return { text: names.join(' / ') + ' (معلّق)', kind: 'pending' };
 }
 
+/** رقم العمود ← حرفه (1 = A، 27 = AA) */
+function colLetter(n: number): string {
+  let s = '';
+  while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+
+/** اسم الفرع كما يُجمع في الملخص: بلا سبب Out Door (السطر الثاني) وبلا «(معلّق)» */
+const summaryName = (part: string) => part.split('\n')[0].replace(/\s*\(معلّق\)\s*$/, '').trim();
+
+/** ترتيب مثل الجداول المحورية في Excel: بلا تمييز حالة الأحرف، واللاتيني قبل العربي */
+const pivotSort = (a: string, b: string) => { const x = a.toLowerCase(), y = b.toLowerCase(); return x < y ? -1 : x > y ? 1 : 0; };
+
+/**
+ * شيت Summary: جدولان بنفس شكل الجداول المحورية.
+ *   A:C  الموظف ← فروعه وعدد أيام كل فرع، ثم سطر «الاسم Total».
+ *   J…   مصفوفة الفروع × الموظفين بعدد الأيام (الفارغ = لا زيارة).
+ * المصدر هو نفس خلايا شيت الخطط؛ اليوم الذي فيه «A / B» يُحسب لكل فرع منهما.
+ */
+function buildSummarySheet(wb: any, names: string[], cells: (Cell | null)[][], border: any) {
+  const counts = new Map<string, Map<string, number>>(); // موظف ← فرع ← أيام
+  names.forEach((n, j) => {
+    const m = new Map<string, number>();
+    cells.forEach(row => {
+      const c = row[j];
+      if (!c || !c.text) return;
+      c.text.split(' / ').map(summaryName).filter(Boolean).forEach(b => m.set(b, (m.get(b) || 0) + 1));
+    });
+    if (m.size) counts.set(n, m);
+  });
+
+  const ws = wb.addWorksheet('Summary');
+  const head = (c: any) => {
+    c.font = { bold: true, color: { argb: 'FF1F2937' } };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6E0B4' } };
+    c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    c.border = border;
+  };
+  const body = (c: any, bold = false) => {
+    c.border = border;
+    c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    if (bold) {
+      c.font = { bold: true };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDEBF7' } };
+    }
+  };
+
+  const people = Array.from(counts.keys()).sort(pivotSort);
+
+  // ---------- الجدول الأول: الموظف ← الفروع ----------
+  ws.getCell('A1').value = 'Count of Day';
+  ws.getCell('A1').font = { bold: true };
+  ['Name', 'Dist', 'Total'].forEach((t, k) => { const c = ws.getCell(2, k + 1); c.value = t; head(c); });
+  let r = 3;
+  people.forEach(p => {
+    const m = counts.get(p)!;
+    const branches = Array.from(m.keys()).sort(pivotSort);
+    const start = r;
+    branches.forEach(b => {
+      ws.getCell(r, 1).value = r === start ? p : null;
+      ws.getCell(r, 2).value = b;
+      ws.getCell(r, 3).value = m.get(b);
+      [1, 2, 3].forEach(k => body(ws.getCell(r, k)));
+      r++;
+    });
+    if (r - 1 > start) ws.mergeCells(start, 1, r - 1, 1);
+    ws.getCell(start, 1).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    ws.getCell(start, 1).font = { bold: true };
+    // سطر الإجمالي للموظف
+    ws.getCell(r, 1).value = `${p} Total`;
+    ws.getCell(r, 3).value = branches.reduce((s, b) => s + (m.get(b) || 0), 0);
+    [1, 2, 3].forEach(k => body(ws.getCell(r, k), true));
+    ws.mergeCells(r, 1, r, 2);
+    r++;
+  });
+
+  // ---------- الجدول الثاني: الفروع × الموظفين ----------
+  const allBranches = Array.from(new Set(people.flatMap(p => Array.from(counts.get(p)!.keys())))).sort(pivotSort);
+  const C0 = 10; // العمود J
+  ws.getCell(1, C0).value = 'Count of Day';
+  ws.getCell(1, C0).font = { bold: true };
+  ws.getCell(1, C0 + 1).value = 'Name';
+  ws.getCell(1, C0 + 1).font = { bold: true };
+  const h0 = ws.getCell(2, C0); h0.value = 'Dist'; head(h0);
+  people.forEach((p, k) => { const c = ws.getCell(2, C0 + 1 + k); c.value = p; head(c); });
+  allBranches.forEach((b, i) => {
+    const row = 3 + i;
+    const bc = ws.getCell(row, C0); bc.value = b; body(bc); bc.alignment = { horizontal: 'left', vertical: 'middle' };
+    people.forEach((p, k) => {
+      const c = ws.getCell(row, C0 + 1 + k);
+      const n = counts.get(p)!.get(b);
+      c.value = n ? n : null;
+      body(c);
+    });
+  });
+
+  ws.getColumn(1).width = 34;
+  ws.getColumn(2).width = 24;
+  ws.getColumn(3).width = 8;
+  ws.getColumn(C0).width = 26;
+  people.forEach((_, k) => { ws.getColumn(C0 + 1 + k).width = 24; });
+  ws.views = [{ state: 'frozen', ySplit: 2 }];
+}
+
 export default function PlanReport({ syncUrl, approverToken }: Props) {
   const today = todayIso();
   const [from, setFrom] = useState(`${monthOf(today)}-01`);
@@ -171,6 +275,26 @@ export default function PlanReport({ syncUrl, approverToken }: Props) {
       ws.getColumn(2).width = 11;
       matrix.users.forEach((_, i) => { ws.getColumn(i + 3).width = 26; });
 
+      // تنسيق شرطي: أكثر من موظف يزور نفس الفرع في نفس اليوم ← أحمر فاتح بنص أحمر داكن
+      // (نفس «Light Red Fill with Dark Red Text» في Excel). قاعدة لكل صف، فيبقى حيّاً لو عُدّلت الخلايا.
+      if (matrix.users.length > 1) {
+        const firstCol = 'C', lastCol = colLetter(matrix.users.length + 2);
+        matrix.dates.forEach((_, i) => {
+          const r = i + 3; // بعد صفّي العناوين
+          ws.addConditionalFormatting({
+            ref: `${firstCol}${r}:${lastCol}${r}`,
+            rules: [{
+              type: 'expression', priority: i + 1,
+              formulae: [`AND(${firstCol}${r}<>"",COUNTIF($${firstCol}${r}:$${lastCol}${r},${firstCol}${r})>1)`],
+              style: {
+                fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFFFC7CE' } },
+                font: { color: { argb: 'FF9C0006' } }
+              }
+            }]
+          });
+        });
+      }
+
       // مفتاح الألوان أسفل الجدول
       ws.addRow([]);
       (Object.keys(KIND_STYLE) as Cell['kind'][]).forEach(k => {
@@ -178,6 +302,8 @@ export default function PlanReport({ syncUrl, approverToken }: Props) {
         r.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: KIND_STYLE[k].xl } };
         r.getCell(3).font = { color: { argb: 'FF' + KIND_STYLE[k].fg.slice(1) } };
       });
+
+      buildSummarySheet(wb, matrix.users.map(u => u.userName), matrix.cells, border);
 
       const buf = await wb.xlsx.writeBuffer();
       const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
